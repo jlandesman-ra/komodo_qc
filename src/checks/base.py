@@ -6,6 +6,8 @@ from abc import ABC, abstractmethod
 from typing import List, Optional, Any, Dict
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
+import uuid
+from datetime import datetime
 
 from src.core.spark_utils import create_result_row
 from src.config.settings import NULL_PERCENT_THRESHOLD
@@ -19,6 +21,8 @@ class BaseCheck(ABC):
         self.refresh_month = refresh_month
         self.events_table_name = events_table_name
         self.results = []
+        # Generate a unique run ID
+        self.run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
     
     def add_result(
         self,
