@@ -30,7 +30,7 @@ import importlib.util
 # Add the project root to the Python path
 project_root = os.path.abspath(os.path.join(os.getcwd(), '..'))
 if project_root not in sys.path:
-    sys.path.append(project_root)
+    sys.path.insert(0, project_root)  # Insert at beginning to ensure it's found first
 
 # Print the Python path for debugging
 print("Python path:", sys.path)
@@ -56,12 +56,18 @@ if os.path.exists(settings_path):
     
     # Try to load the module directly
     try:
-        spec = importlib.util.spec_from_file_location("settings", settings_path)
-        settings_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(settings_module)
+        # Create a new module
+        settings_module = type(importlib.machinery.ModuleSpec("settings", None))()
+        
+        # Execute the file contents in the module's namespace
+        exec(settings_content, settings_module.__dict__)
+        
         print("\nSuccessfully loaded settings module directly")
         print(f"REFRESH_MONTH: {getattr(settings_module, 'REFRESH_MONTH', 'Not found')}")
         print(f"PREVIOUS_REFRESH_MONTH: {getattr(settings_module, 'PREVIOUS_REFRESH_MONTH', 'Not found')}")
+        
+        # Make the module available in sys.modules
+        sys.modules['src.config.settings'] = settings_module
     except Exception as e:
         print(f"\nError loading settings module directly: {str(e)}")
 
