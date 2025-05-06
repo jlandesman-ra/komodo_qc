@@ -153,7 +153,6 @@ class ValidityCheck(BaseCheck):
                     check_name="days_supply_positive",
                     metric_name="negative_days_percent",
                     metric_value=negative_days_percent,
-                    metric_value=negative_days_percent,
                     status="FAIL" if negative_days_percent > 0 else "PASS",
                     details="Percentage of records with non-positive days supply",
                 )

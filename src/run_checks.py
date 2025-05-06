@@ -12,8 +12,7 @@ from src.checks.distribution import DistributionCheck
 from src.checks.temporal import TemporalCheck
 from src.checks.validity import ValidityCheck
 from src.checks.volume import VolumeCheck
-from src.core.spark_utils import get_spark_session
-from src.core.logging_utils import setup_logging
+from pyspark.sql import SparkSession
 from src.config.settings import (
     DB_NAME,
     RAW_SCHEMA,
