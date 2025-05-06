@@ -14,6 +14,20 @@ from pyspark.sql.functions import (
 
 from src.core.result_schema import result_schema
 
+def get_spark_session() -> SparkSession:
+    """Creates and returns a SparkSession instance."""
+    try:
+        # Try to get the existing Databricks SparkSession
+        spark = SparkSession.builder.getOrCreate()
+        # Test if we're in Databricks
+        _ = spark.conf.get("spark.databricks.clusterUsageTags.clusterId")
+        print("Using existing Databricks SparkSession")
+        return spark
+    except Exception as e:
+        print(f"Not running in Databricks environment: {str(e)}")
+        print("Please run this script in a Databricks environment")
+        raise RuntimeError("This script must be run in a Databricks environment")
+
 def get_table(
     spark: SparkSession, db: str, schema: str, table: str
 ) -> DataFrame:

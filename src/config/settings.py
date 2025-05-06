@@ -8,6 +8,10 @@ RAW_SCHEMA = "raw_komodo"
 STAGING_SCHEMA = "staging_komodo"
 DEV_SCHEMA = "dev_jlandesman"
 
+# Refresh Months
+REFRESH_MONTH = "2024-03"  # Current refresh month in YYYY-MM format
+PREVIOUS_REFRESH_MONTH = "2024-02"  # Previous refresh month in YYYY-MM format
+
 # Table Names
 EVENTS_TABLES = ["Stg_mx_events", "Stg_rx_events"]
 DEMO_TABLE = "Stg_patient_demo"

@@ -3,6 +3,7 @@ Main script to run data quality checks.
 """
 
 import argparse
+import logging
 from typing import List, Dict, Optional
 from pyspark.sql import SparkSession
 
@@ -12,12 +13,22 @@ from src.checks.distribution import DistributionCheck
 from src.checks.temporal import TemporalCheck
 from src.checks.validity import ValidityCheck
 from src.checks.volume import VolumeCheck
-from pyspark.sql import SparkSession
+from src.core.spark_utils import get_spark_session, get_table
 from src.config.settings import (
     DB_NAME,
     RAW_SCHEMA,
-    STAGING_SCHEMA
+    STAGING_SCHEMA,
+    REFRESH_MONTH,
+    PREVIOUS_REFRESH_MONTH
 )
+
+def setup_logging():
+    """Set up logging configuration."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    return logging.getLogger(__name__)
 
 def parse_args():
     """Parse command line arguments."""
@@ -98,9 +109,20 @@ def main():
     current_refresh_month = args.refresh_month or REFRESH_MONTH
     previous_refresh_month = args.previous_refresh_month or PREVIOUS_REFRESH_MONTH
     
+    # Define check classes
+    check_classes = {
+        'completeness': CompletenessCheck,
+        'consistency': ConsistencyCheck,
+        'distribution': DistributionCheck,
+        'temporal': TemporalCheck,
+        'validity': ValidityCheck,
+        'volume': VolumeCheck
+    }
+    
     # Determine which checks to run
     checks_to_run = check_classes.keys() if 'all' in args.checks else args.checks
     
+    spark = None
     try:
         # Initialize Spark session
         spark = get_spark_session()
