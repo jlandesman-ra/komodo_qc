@@ -90,7 +90,8 @@ def run_checks(
             check = check_class(
                 spark=spark,
                 events_df=events_df,
-                refresh_month=current_refresh_month
+                refresh_month=current_refresh_month,
+                events_table_name=events_table_name
             )
             # Set previous refresh month if needed
             if hasattr(check, 'previous_refresh_month'):

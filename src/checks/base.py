@@ -13,10 +13,11 @@ from src.config.settings import NULL_PERCENT_THRESHOLD
 class BaseCheck(ABC):
     """Base class for all data quality checks."""
     
-    def __init__(self, spark: SparkSession, events_df: DataFrame, refresh_month: str):
+    def __init__(self, spark: SparkSession, events_df: DataFrame, refresh_month: str, events_table_name: str):
         self.spark = spark
         self.events_df = events_df
         self.refresh_month = refresh_month
+        self.events_table_name = events_table_name
         self.results = []
     
     def add_result(
@@ -31,7 +32,7 @@ class BaseCheck(ABC):
         """Adds a result to the check results list."""
         result = create_result_row(
             run_id=self.run_id,
-            events_table_name=self.events_df.name,
+            events_table_name=self.events_table_name,
             refresh_month=self.refresh_month,
             check_category=check_category,
             check_name=check_name,
