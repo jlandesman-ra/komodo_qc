@@ -46,7 +46,7 @@ class VolumeCheck(BaseCheck):
     def _load_data(self):
         """Loads data for both current and previous months."""
         # Get base table
-        base_df = get_table(self.spark, DB_NAME, RAW_SCHEMA, self.events_df.name)
+        base_df = get_table(self.spark, DB_NAME, RAW_SCHEMA, self.events_table_name)
         
         # Initialize columns
         self.provider_col = None
@@ -59,46 +59,46 @@ class VolumeCheck(BaseCheck):
         # Check for provider column
         if "provider_id" in base_df.columns:
             self.provider_col = "provider_id"
-            print(f"Found provider_id column in {self.events_df.name}, will include provider metrics.")
+            print(f"Found provider_id column in {self.events_table_name}, will include provider metrics.")
         else:
-            print(f"Warning: 'provider_id' column not found in {self.events_df.name}, skipping provider counts.")
+            print(f"Warning: 'provider_id' column not found in {self.events_table_name}, skipping provider counts.")
         
         # Check for organization column
         if "organization_id" in base_df.columns:
             self.org_col = "organization_id"
-            print(f"Found organization_id column in {self.events_df.name}, will include organization metrics.")
+            print(f"Found organization_id column in {self.events_table_name}, will include organization metrics.")
         else:
-            print(f"Warning: 'organization_id' column not found in {self.events_df.name}, skipping organization counts.")
+            print(f"Warning: 'organization_id' column not found in {self.events_table_name}, skipping organization counts.")
         
         # Check for payer column
         if "payer_id" in base_df.columns:
             self.payer_col = "payer_id"
-            print(f"Found payer_id column in {self.events_df.name}, will include payer metrics.")
+            print(f"Found payer_id column in {self.events_table_name}, will include payer metrics.")
         else:
-            print(f"Warning: 'payer_id' column not found in {self.events_df.name}, skipping payer counts.")
+            print(f"Warning: 'payer_id' column not found in {self.events_table_name}, skipping payer counts.")
         
         # Check for cohort column
         if "cohort_id" in base_df.columns:
             self.cohort_col = "cohort_id"
-            print(f"Found cohort_id column in {self.events_df.name}, will include cohort metrics.")
+            print(f"Found cohort_id column in {self.events_table_name}, will include cohort metrics.")
         else:
-            print(f"Warning: 'cohort_id' column not found in {self.events_df.name}, skipping cohort counts.")
+            print(f"Warning: 'cohort_id' column not found in {self.events_table_name}, skipping cohort counts.")
         
         # Check for code column based on table type
-        if self.events_df.name == "Stg_rx_events":
+        if self.events_table_name == "Stg_rx_events":
             if "ndc11" in base_df.columns:
                 self.code_col = "ndc11"
                 self.code_metric_name = "Distinct NDC11 Count"
-                print(f"Found ndc11 column in {self.events_df.name}, will include NDC11 metrics.")
+                print(f"Found ndc11 column in {self.events_table_name}, will include NDC11 metrics.")
             else:
-                print(f"Warning: 'ndc11' column not found in {self.events_df.name}, skipping NDC11 counts.")
+                print(f"Warning: 'ndc11' column not found in {self.events_table_name}, skipping NDC11 counts.")
         else:  # Default to Stg_mx_events
             if "procedure_code" in base_df.columns:
                 self.code_col = "procedure_code"
                 self.code_metric_name = "Distinct Procedure Code Count"
-                print(f"Found procedure_code column in {self.events_df.name}, will include procedure code metrics.")
+                print(f"Found procedure_code column in {self.events_table_name}, will include procedure code metrics.")
             else:
-                print(f"Warning: 'procedure_code' column not found in {self.events_df.name}, skipping procedure code counts.")
+                print(f"Warning: 'procedure_code' column not found in {self.events_table_name}, skipping procedure code counts.")
         
         # Build aggregation columns
         agg_cols = [
@@ -252,7 +252,7 @@ class VolumeCheck(BaseCheck):
                 metric_name="status",
                 metric_value="SKIPPED",
                 status="WARN",
-                details=f"Relevant code column ({self.code_col}) not found in {self.events_df.name}."
+                details=f"Relevant code column ({self.code_col}) not found in {self.events_table_name}."
             )
             return
         

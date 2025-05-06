@@ -22,6 +22,7 @@ class BaseCheck(ABC):
         self.events_table_name = events_table_name
         self.results = []
         # Generate a unique run ID
+        self.run_start_datetime = datetime.now() 
         self.run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
     
     def add_result(
@@ -36,6 +37,7 @@ class BaseCheck(ABC):
         """Adds a result to the check results list."""
         result = create_result_row(
             run_id=self.run_id,
+            run_start_time = self.run_start_datetime,
             events_table_name=self.events_table_name,
             refresh_month=self.refresh_month,
             check_category=check_category,

@@ -24,7 +24,7 @@ class ConsistencyCheck(BaseCheck):
     def run(self) -> List[Dict]:
         """Runs all consistency checks."""
         # Determine table type
-        is_rx = self.events_df.name == "Stg_rx_events"
+        is_rx = self.events_table_name == "Stg_rx_events"
         
         # Load supporting data
         self._load_supporting_data()

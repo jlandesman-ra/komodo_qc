@@ -7,7 +7,7 @@ import logging
 from typing import List, Dict, Optional
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-
+from datetime import datetime
 from src.checks.completeness import CompletenessCheck
 from src.checks.consistency import ConsistencyCheck
 from src.checks.distribution import DistributionCheck
@@ -69,6 +69,7 @@ def run_checks(
     """
     # Get events table
     events_df = get_table(spark, DB_NAME, RAW_SCHEMA, events_table_name)
+    print('table loaded')
     if events_df is None:
         raise ValueError(f"Events table {events_table_name} not found")
     
@@ -88,6 +89,7 @@ def run_checks(
         if check_name in check_classes:
             check_class = check_classes[check_name]
             # Initialize check with current refresh month
+            print(f'running {check_name}, \nevents_df = {events_df}, \ncurrent_refresh_month = {current_refresh_month}, \nevents_table_name = {events_table_name}')
             check = check_class(
                 spark=spark,
                 events_df=events_df,
@@ -119,7 +121,7 @@ def main():
     # Get refresh months
     current_refresh_month = args.refresh_month or REFRESH_MONTH
     previous_refresh_month = args.previous_refresh_month or PREVIOUS_REFRESH_MONTH
-    
+    print('list of classes')
     # Define check classes
     check_classes = {
         'completeness': CompletenessCheck,
@@ -135,9 +137,11 @@ def main():
     
     spark = None
     try:
+        print('initialize spark')
         # Initialize Spark session
         spark = get_spark_session()
-        
+
+        print('running checks')
         # Run checks
         results = run_checks(
             spark=spark,

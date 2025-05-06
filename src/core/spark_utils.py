@@ -11,6 +11,7 @@ from pyspark.sql.functions import (
     lit,
     when,
 )
+from datetime import datetime
 
 from src.core.result_schema import result_schema
 
@@ -62,6 +63,7 @@ def save_results(spark: SparkSession, results_df: DataFrame):
 
 def create_result_row(
     run_id: str,
+    run_start_time_val: datetime,
     events_table_name: str,
     refresh_month: str,
     check_category: str,
@@ -74,7 +76,7 @@ def create_result_row(
     """Creates a standardized result row for data quality checks."""
     return {
         "run_id": run_id,
-        "run_start_time": current_timestamp(),
+        "run_start_time": run_start_time_val,
         "events_table_name": events_table_name,
         "refresh_month": refresh_month,
         "check_category": check_category,

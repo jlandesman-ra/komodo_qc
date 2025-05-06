@@ -20,7 +20,7 @@ class ValidityCheck(BaseCheck):
     def run(self) -> List[Dict]:
         """Runs all validity checks."""
         # Determine table type
-        is_rx = self.events_df.name == "Stg_rx_events"
+        is_rx = self.events_table_name == "Stg_rx_events"
         
         # Common checks
         self._check_dates(is_rx)

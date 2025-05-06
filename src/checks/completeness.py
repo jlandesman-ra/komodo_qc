@@ -22,7 +22,7 @@ class CompletenessCheck(BaseCheck):
     def _check_required_fields(self):
         """Checks for NULL values in required fields."""
         # Determine table type and required fields
-        if self.events_df.name == "Stg_rx_events":
+        if self.events_table_name == "Stg_rx_events":
             required_fields = [
                 "pharmacy_event_id",
                 "patient_id",
@@ -65,7 +65,7 @@ class CompletenessCheck(BaseCheck):
     def _check_optional_fields(self):
         """Checks for NULL values in optional fields."""
         # Determine table type and optional fields
-        if self.events_df.name == "Stg_rx_events":
+        if self.events_table_name == "Stg_rx_events":
             optional_fields = [
                 "ndc11",
                 "days_supply",
@@ -115,7 +115,7 @@ class CompletenessCheck(BaseCheck):
     def _check_logical_completeness(self):
         """Checks for logical completeness issues."""
         # Check procedure code type consistency (MX only)
-        if self.events_df.name == "Stg_mx_events":
+        if self.events_table_name == "Stg_mx_events":
             if "procedure_code" in self.events_df.columns and "procedure_code_type" in self.events_df.columns:
                 proc_code_null_type_not_null = self.events_df.filter(
                     F.col("procedure_code").isNull() & 
