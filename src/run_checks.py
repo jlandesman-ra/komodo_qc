@@ -86,12 +86,15 @@ def run_checks(
     for check_name in checks_to_run:
         if check_name in check_classes:
             check_class = check_classes[check_name]
+            # Initialize check with current refresh month
             check = check_class(
                 spark=spark,
                 events_df=events_df,
-                current_refresh_month=current_refresh_month,
-                previous_refresh_month=previous_refresh_month
+                refresh_month=current_refresh_month
             )
+            # Set previous refresh month if needed
+            if hasattr(check, 'previous_refresh_month'):
+                check.previous_refresh_month = previous_refresh_month
             results = check.run()
             all_results.extend(results)
     
