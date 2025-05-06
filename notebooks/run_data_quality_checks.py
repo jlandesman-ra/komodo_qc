@@ -25,7 +25,6 @@
 # COMMAND ----------
 import sys
 import os
-import importlib.util
 from pathlib import Path
 
 # Get the workspace path
@@ -59,33 +58,22 @@ if os.path.exists(settings_path):
     print("\nSettings file contents:")
     print(settings_content)
     
-    # Try to load the module directly
-    try:
-        # Create a new module
-        settings_module = type(importlib.machinery.ModuleSpec("settings", None))()
-        
-        # Execute the file contents in the module's namespace
-        exec(settings_content, settings_module.__dict__)
-        
-        print("\nSuccessfully loaded settings module directly")
-        print(f"REFRESH_MONTH: {getattr(settings_module, 'REFRESH_MONTH', 'Not found')}")
-        print(f"PREVIOUS_REFRESH_MONTH: {getattr(settings_module, 'PREVIOUS_REFRESH_MONTH', 'Not found')}")
-        
-        # Make the module available in sys.modules
-        sys.modules['src.config.settings'] = settings_module
-    except Exception as e:
-        print(f"\nError loading settings module directly: {str(e)}")
-        import traceback
-        print("\nTraceback:")
-        print(traceback.format_exc())
+    # Create a new module
+    import types
+    settings_module = types.ModuleType('settings')
+    
+    # Execute the file contents in the module's namespace
+    exec(settings_content, settings_module.__dict__)
+    
+    # Make the module available in sys.modules
+    sys.modules['src.config.settings'] = settings_module
+    
+    print("\nSuccessfully loaded settings module")
+    print(f"REFRESH_MONTH: {getattr(settings_module, 'REFRESH_MONTH', 'Not found')}")
+    print(f"PREVIOUS_REFRESH_MONTH: {getattr(settings_module, 'PREVIOUS_REFRESH_MONTH', 'Not found')}")
 
 # Try the normal import
 try:
-    # First try importing the module
-    import src.config.settings
-    print("\nSuccessfully imported settings module")
-    
-    # Then try importing specific variables
     from src.config.settings import (
         DB_NAME,
         RAW_SCHEMA,
