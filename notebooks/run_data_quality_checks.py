@@ -26,15 +26,20 @@
 import sys
 import os
 import importlib.util
+from pathlib import Path
 
-# Add the project root to the Python path
-project_root = os.path.abspath(os.path.join(os.getcwd(), '..'))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)  # Insert at beginning to ensure it's found first
+# Get the workspace path
+workspace_path = "/Workspace/Users/jlandesman@racap.com/komodo_qc"
+print(f"Workspace path: {workspace_path}")
+
+# Add the workspace path to Python path
+if workspace_path not in sys.path:
+    sys.path.insert(0, workspace_path)
 
 # Print the Python path for debugging
-print("Python path:", sys.path)
-print("Project root:", project_root)
+print("\nPython path:")
+for path in sys.path:
+    print(f"  - {path}")
 
 # COMMAND ----------
 # MAGIC %md
@@ -43,7 +48,7 @@ print("Project root:", project_root)
 
 # COMMAND ----------
 # Try to load the settings file directly
-settings_path = os.path.join(project_root, "src", "config", "settings.py")
+settings_path = os.path.join(workspace_path, "src", "config", "settings.py")
 print(f"Settings file path: {settings_path}")
 print(f"Settings file exists: {os.path.exists(settings_path)}")
 
@@ -70,9 +75,17 @@ if os.path.exists(settings_path):
         sys.modules['src.config.settings'] = settings_module
     except Exception as e:
         print(f"\nError loading settings module directly: {str(e)}")
+        import traceback
+        print("\nTraceback:")
+        print(traceback.format_exc())
 
 # Try the normal import
 try:
+    # First try importing the module
+    import src.config.settings
+    print("\nSuccessfully imported settings module")
+    
+    # Then try importing specific variables
     from src.config.settings import (
         DB_NAME,
         RAW_SCHEMA,
@@ -80,7 +93,7 @@ try:
         REFRESH_MONTH,
         PREVIOUS_REFRESH_MONTH
     )
-    print("\nSuccessfully imported settings:")
+    print("\nSuccessfully imported settings variables:")
     print(f"DB_NAME: {DB_NAME}")
     print(f"RAW_SCHEMA: {RAW_SCHEMA}")
     print(f"STAGING_SCHEMA: {STAGING_SCHEMA}")
@@ -88,11 +101,14 @@ try:
     print(f"PREVIOUS_REFRESH_MONTH: {PREVIOUS_REFRESH_MONTH}")
 except Exception as e:
     print(f"\nError importing settings: {str(e)}")
-    print("Current directory:", os.getcwd())
-    print("Directory contents:", os.listdir("."))
-    print("Parent directory contents:", os.listdir(".."))
-    print("src directory contents:", os.listdir("../src"))
-    print("config directory contents:", os.listdir("../src/config"))
+    print("\nCurrent directory:", os.getcwd())
+    print("\nDirectory contents:", os.listdir("."))
+    print("\nParent directory contents:", os.listdir(".."))
+    print("\nsrc directory contents:", os.listdir("../src"))
+    print("\nconfig directory contents:", os.listdir("../src/config"))
+    import traceback
+    print("\nTraceback:")
+    print(traceback.format_exc())
 
 # COMMAND ----------
 # MAGIC %md
