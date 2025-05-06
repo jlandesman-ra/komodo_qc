@@ -25,6 +25,7 @@
 # COMMAND ----------
 import sys
 import os
+import importlib.util
 
 # Add the project root to the Python path
 project_root = os.path.abspath(os.path.join(os.getcwd(), '..'))
@@ -41,6 +42,30 @@ print("Project root:", project_root)
 # MAGIC Let's verify that we can access the settings.
 
 # COMMAND ----------
+# Try to load the settings file directly
+settings_path = os.path.join(project_root, "src", "config", "settings.py")
+print(f"Settings file path: {settings_path}")
+print(f"Settings file exists: {os.path.exists(settings_path)}")
+
+if os.path.exists(settings_path):
+    # Read the file contents
+    with open(settings_path, 'r') as f:
+        settings_content = f.read()
+    print("\nSettings file contents:")
+    print(settings_content)
+    
+    # Try to load the module directly
+    try:
+        spec = importlib.util.spec_from_file_location("settings", settings_path)
+        settings_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(settings_module)
+        print("\nSuccessfully loaded settings module directly")
+        print(f"REFRESH_MONTH: {getattr(settings_module, 'REFRESH_MONTH', 'Not found')}")
+        print(f"PREVIOUS_REFRESH_MONTH: {getattr(settings_module, 'PREVIOUS_REFRESH_MONTH', 'Not found')}")
+    except Exception as e:
+        print(f"\nError loading settings module directly: {str(e)}")
+
+# Try the normal import
 try:
     from src.config.settings import (
         DB_NAME,
@@ -49,14 +74,14 @@ try:
         REFRESH_MONTH,
         PREVIOUS_REFRESH_MONTH
     )
-    print("Successfully imported settings:")
+    print("\nSuccessfully imported settings:")
     print(f"DB_NAME: {DB_NAME}")
     print(f"RAW_SCHEMA: {RAW_SCHEMA}")
     print(f"STAGING_SCHEMA: {STAGING_SCHEMA}")
     print(f"REFRESH_MONTH: {REFRESH_MONTH}")
     print(f"PREVIOUS_REFRESH_MONTH: {PREVIOUS_REFRESH_MONTH}")
 except Exception as e:
-    print(f"Error importing settings: {str(e)}")
+    print(f"\nError importing settings: {str(e)}")
     print("Current directory:", os.getcwd())
     print("Directory contents:", os.listdir("."))
     print("Parent directory contents:", os.listdir(".."))
