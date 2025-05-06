@@ -5,6 +5,7 @@ Configuration settings for the Komodo Data Quality Framework.
 # Database Configuration
 DB_NAME = "commercial"  # Catalog Name
 RAW_SCHEMA = "raw_komodo"
+STAGING_SCHEMA = "staging_komodo"
 DEV_SCHEMA = "dev_jlandesman"
 
 # Table Names
