@@ -6,6 +6,7 @@ import argparse
 import logging
 from typing import List, Dict, Optional
 from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
 
 from src.checks.completeness import CompletenessCheck
 from src.checks.consistency import ConsistencyCheck
@@ -13,7 +14,7 @@ from src.checks.distribution import DistributionCheck
 from src.checks.temporal import TemporalCheck
 from src.checks.validity import ValidityCheck
 from src.checks.volume import VolumeCheck
-from src.core.spark_utils import get_spark_session, get_table
+from src.core.spark_utils import get_spark_session, get_table, save_results
 from src.config.settings import (
     DB_NAME,
     RAW_SCHEMA,
@@ -98,6 +99,12 @@ def run_checks(
                 check.previous_refresh_month = previous_refresh_month
             results = check.run()
             all_results.extend(results)
+    
+    # Create DataFrame from results
+    if all_results:
+        results_df = spark.createDataFrame(all_results)
+        # Save results
+        save_results(spark, results_df)
     
     return all_results
 
