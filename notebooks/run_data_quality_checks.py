@@ -31,13 +31,37 @@ project_root = os.path.abspath(os.path.join(os.getcwd(), '..'))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from src.config.settings import (
-    DB_NAME,
-    RAW_SCHEMA,
-    STAGING_SCHEMA,
-    REFRESH_MONTH,
-    PREVIOUS_REFRESH_MONTH
-)
+# Print the Python path for debugging
+print("Python path:", sys.path)
+print("Project root:", project_root)
+
+# COMMAND ----------
+# MAGIC %md
+# MAGIC ## Verify Settings
+# MAGIC Let's verify that we can access the settings.
+
+# COMMAND ----------
+try:
+    from src.config.settings import (
+        DB_NAME,
+        RAW_SCHEMA,
+        STAGING_SCHEMA,
+        REFRESH_MONTH,
+        PREVIOUS_REFRESH_MONTH
+    )
+    print("Successfully imported settings:")
+    print(f"DB_NAME: {DB_NAME}")
+    print(f"RAW_SCHEMA: {RAW_SCHEMA}")
+    print(f"STAGING_SCHEMA: {STAGING_SCHEMA}")
+    print(f"REFRESH_MONTH: {REFRESH_MONTH}")
+    print(f"PREVIOUS_REFRESH_MONTH: {PREVIOUS_REFRESH_MONTH}")
+except Exception as e:
+    print(f"Error importing settings: {str(e)}")
+    print("Current directory:", os.getcwd())
+    print("Directory contents:", os.listdir("."))
+    print("Parent directory contents:", os.listdir(".."))
+    print("src directory contents:", os.listdir("../src"))
+    print("config directory contents:", os.listdir("../src/config"))
 
 # COMMAND ----------
 # MAGIC %md
