@@ -16,9 +16,7 @@ from pyspark.sql import SparkSession
 from src.config.settings import (
     DB_NAME,
     RAW_SCHEMA,
-    STAGING_SCHEMA,
-    REFRESH_MONTH,
-    PREVIOUS_REFRESH_MONTH,
+    STAGING_SCHEMA
 )
 
 def parse_args():
