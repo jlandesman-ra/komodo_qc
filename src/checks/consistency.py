@@ -53,7 +53,7 @@ class ConsistencyCheck(BaseCheck):
         # Get latest demographic records per patient
         self.demo_df = (
             get_table(self.spark, DB_NAME, RAW_SCHEMA, DEMO_TABLE)
-            .filter(date_format(col("kh_refresh_date"), "yyyy-MM") <= self.current_refresh_month)
+            .filter(date_format(col("kh_refresh_date"), "yyyy-MM") <= self.refresh_month)
             .withColumn("rn", expr("row_number() OVER (PARTITION BY patient_id ORDER BY kh_refresh_date DESC)"))
             .filter(col("rn") == 1)
             .select("patient_id").distinct()
@@ -63,7 +63,7 @@ class ConsistencyCheck(BaseCheck):
         # Get latest provider records
         self.providers_df = (
             get_table(self.spark, DB_NAME, RAW_SCHEMA, PROVIDERS_TABLE)
-            .filter(date_format(col("kh_refresh_date"), "yyyy-MM") <= self.current_refresh_month)
+            .filter(date_format(col("kh_refresh_date"), "yyyy-MM") <= self.refresh_month)
             .withColumn("rn", expr("row_number() OVER (PARTITION BY npi ORDER BY kh_refresh_date DESC)"))
             .filter(col("rn") == 1)
             .select("npi").distinct()
@@ -73,7 +73,7 @@ class ConsistencyCheck(BaseCheck):
         # Get enrollment periods
         self.enroll_df = (
             get_table(self.spark, DB_NAME, RAW_SCHEMA, ENROLL_TABLE)
-            .filter(date_format(col("kh_refresh_date"), "yyyy-MM") <= self.current_refresh_month)
+            .filter(date_format(col("kh_refresh_date"), "yyyy-MM") <= self.refresh_month)
             .select("patient_id", col("start_date").alias("enroll_start"), col("end_date").alias("enroll_end"))
             .filter(col("enroll_start").isNotNull() & col("enroll_end").isNotNull())
             .alias("en")
@@ -82,7 +82,7 @@ class ConsistencyCheck(BaseCheck):
         # Get mortality data
         self.mortality_df = (
             get_table(self.spark, DB_NAME, RAW_SCHEMA, MORTALITY_TABLE)
-            .filter(date_format(col("kh_refresh_date"), "yyyy-MM") <= self.current_refresh_month)
+            .filter(date_format(col("kh_refresh_date"), "yyyy-MM") <= self.refresh_month)
             .filter(col("patient_death_date").isNotNull())
             .withColumn("rn", expr("row_number() OVER (PARTITION BY patient_id ORDER BY kh_refresh_date DESC)"))
             .filter(col("rn") == 1)
@@ -131,20 +131,23 @@ class ConsistencyCheck(BaseCheck):
     
     def _check_patient_demographics(self):
         """Checks that all patients in events exist in demographics."""
+        
+        distinct_patients_events = self.events_df.select("patient_id").distinct()
+
         if "patient_id" in self.events_df.columns:
             # Join events with demographics
-            events_demo_join = self.events_df.select("patient_id").distinct().join(
-                self.demo_df,
-                col("patient_id") == col("dm.patient_id"),
-                "left"
-            )
-            
+            events_demo_join = distinct_patients_events.join(
+            self.demo_df, 
+            distinct_patients_events["patient_id"] == col("dm.patient_id"), # Corrected: Explicitly reference events_df.patient_id
+            "left"
+        )
+             
             # Count patients not in demographics
             missing_patients = events_demo_join.filter(
                 isnull(col("dm.patient_id"))
             ).count()
             
-            total_patients = self.events_df.select("patient_id").distinct().count()
+            total_patients = distinct_patients_events.count()
             missing_patient_percent = (missing_patients / total_patients) * 100 if total_patients > 0 else 0
             
             self.add_result(
@@ -161,14 +164,19 @@ class ConsistencyCheck(BaseCheck):
         if "patient_id" in self.events_df.columns:
             date_column = "fill_date" if is_rx else "service_date"
             
-            # Join events with enrollment periods
-            events_enroll_join = self.events_df.select("patient_id", date_column).join(
-                self.enroll_df,
-                (col("patient_id") == col("en.patient_id")) &
-                (col(date_column) >= col("en.enroll_start")) &
-                (col(date_column) <= col("en.enroll_end")),
-                "left"
-            )
+
+
+            # Select necessary columns from events_df for the join
+            events_for_enroll_check = self.events_df.select(self.events_df["patient_id"].alias("evt_patient_id"), col(date_column).alias("evt_date_column"))
+
+            events_enroll_join = events_for_enroll_check.join(
+            self.enroll_df,
+            # Qualify patient_id from self.events_df (now aliased as evt_patient_id)
+            col("evt_patient_id") == col("en.patient_id") &
+            (col("evt_date_column") >= col("en.enroll_start")) &
+            (col("evt_date_column") <= col("en.enroll_end")),
+            "left"
+        )
             
             # Count events outside enrollment
             events_outside = events_enroll_join.filter(
@@ -192,16 +200,19 @@ class ConsistencyCheck(BaseCheck):
         if "patient_id" in self.events_df.columns:
             date_column = "fill_date" if "fill_date" in self.events_df.columns else "service_date"
             
-            # Join events with mortality data
-            events_mortality_join = self.events_df.select("patient_id", date_column).join(
+            # Select necessary columns from events_df for the join
+            events_for_mortality_check = self.events_df.select(self.events_df["patient_id"].alias("evt_patient_id"), col(date_column).alias("evt_date_column"))
+
+            events_mortality_join = events_for_mortality_check.join(
                 self.mortality_df,
-                col("patient_id") == col("mo.patient_id"),
-                "inner"
+                # Qualify patient_id from self.events_df (now aliased as evt_patient_id)
+                col("evt_patient_id") == col("mo.patient_id"),
+                "inner" 
             )
-            
+                        
             # Count events after death
             events_after_death = events_mortality_join.filter(
-                col(date_column) > col("mo.patient_death_date")
+                col("evt_date_column") > col("mo.patient_death_date")
             ).count()
             
             total_events = events_mortality_join.count()

@@ -1,7 +1,7 @@
 """
 Utility functions for Spark operations in the Komodo Data Quality Framework.
 """
-
+from src.config.settings import RESULTS_TABLE
 from typing import Optional, List, Any, Dict
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
@@ -55,7 +55,7 @@ def save_results(spark: SparkSession, results_df: DataFrame):
         results_df = results_df.select([col(field.name) for field in result_schema.fields])
         
         # Write to the results table
-        results_df.write.mode("append").saveAsTable("rx_mx_events_dq_results")
+        results_df.write.mode("append").saveAsTable(RESULTS_TABLE)
         print("Results saved successfully.")
     except Exception as e:
         print(f"Error saving results: {e}")

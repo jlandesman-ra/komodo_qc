@@ -37,7 +37,7 @@ class BaseCheck(ABC):
         """Adds a result to the check results list."""
         result = create_result_row(
             run_id=self.run_id,
-            run_start_time = self.run_start_datetime,
+            run_start_time_val = self.run_start_datetime,
             events_table_name=self.events_table_name,
             refresh_month=self.refresh_month,
             check_category=check_category,

@@ -22,6 +22,20 @@ class ValidityCheck(BaseCheck):
         # Determine table type
         is_rx = self.events_table_name == "Stg_rx_events"
         
+        
+        # If there are no events, add an informational result and skip other checks
+        if self.total_event_count == 0:
+            self.add_result(
+                check_category="validity",
+                check_name="overall_validity",
+                metric_name="status",
+                metric_value="SKIPPED",
+                status="INFO",
+                details="No events found in the table to validate.",
+            )
+            return self.results
+        
+
         # Common checks
         self._check_dates(is_rx)
         self._check_code_formats(is_rx)
@@ -42,8 +56,7 @@ class ValidityCheck(BaseCheck):
         
         # Check for future dates
         future_dates = self.events_df.filter(F.col(date_column) > current_date()).count()
-        total_count = self.events_df.count()
-        future_date_percent = (future_dates / total_count) * 100 if total_count > 0 else 0
+        future_date_percent = (future_dates / self.total_event_count) * 100 if self.total_event_count > 0 else 0
         
         self.add_result(
             check_category="validity",
@@ -56,7 +69,7 @@ class ValidityCheck(BaseCheck):
         
         # Check for old dates (before 1900)
         old_dates = self.events_df.filter(year(F.col(date_column)) < 1900).count()
-        old_date_percent = (old_dates / total_count) * 100 if total_count > 0 else 0
+        old_date_percent = (old_dates / self.total_event_count) * 100 if self.total_event_count > 0 else 0
         
         self.add_result(
             check_category="validity",
@@ -75,8 +88,8 @@ class ValidityCheck(BaseCheck):
                 F.col("ndc11").isNotNull() & 
                 (length(regexp_replace(F.col("ndc11"), "-", "")) != 11)
             ).count()
-            total_count = self.events_df.count()
-            invalid_ndc_percent = (invalid_ndc / total_count) * 100 if total_count > 0 else 0
+            
+            invalid_ndc_percent = (invalid_ndc / self.total_event_count) * 100 if self.total_event_count > 0 else 0
             
             self.add_result(
                 check_category="validity",
@@ -93,8 +106,8 @@ class ValidityCheck(BaseCheck):
                 F.col("procedure_code_type").isNotNull() & 
                 ~upper(F.col("procedure_code_type")).isin(EXPECTED_PROC_CODE_TYPES)
             ).count()
-            total_count = self.events_df.count()
-            invalid_proc_type_percent = (invalid_proc_type / total_count) * 100 if total_count > 0 else 0
+            
+            invalid_proc_type_percent = (invalid_proc_type / self.total_event_count) * 100 if self.total_event_count > 0 else 0
             
             self.add_result(
                 check_category="validity",
@@ -113,8 +126,8 @@ class ValidityCheck(BaseCheck):
                 negative_quantity = self.events_df.filter(
                     F.col("quantity").isNotNull() & (F.col("quantity") <= 0)
                 ).count()
-                total_count = self.events_df.count()
-                negative_quantity_percent = (negative_quantity / total_count) * 100 if total_count > 0 else 0
+                
+                negative_quantity_percent = (negative_quantity / self.total_event_count) * 100 if self.total_event_count > 0 else 0
                 
                 self.add_result(
                     check_category="validity",
@@ -129,7 +142,7 @@ class ValidityCheck(BaseCheck):
                 extreme_quantity = self.events_df.filter(
                     F.col("quantity").isNotNull() & (F.col("quantity") > EXTREME_UNITS_THRESHOLD)
                 ).count()
-                extreme_quantity_percent = (extreme_quantity / total_count) * 100 if total_count > 0 else 0
+                extreme_quantity_percent = (extreme_quantity / self.total_event_count) * 100 if self.total_event_count > 0 else 0
                 
                 self.add_result(
                     check_category="validity",
@@ -145,8 +158,8 @@ class ValidityCheck(BaseCheck):
                 negative_days = self.events_df.filter(
                     F.col("days_supply").isNotNull() & (F.col("days_supply") <= 0)
                 ).count()
-                total_count = self.events_df.count()
-                negative_days_percent = (negative_days / total_count) * 100 if total_count > 0 else 0
+                
+                negative_days_percent = (negative_days / self.total_event_count) * 100 if self.total_event_count > 0 else 0
                 
                 self.add_result(
                     check_category="validity",
@@ -162,8 +175,8 @@ class ValidityCheck(BaseCheck):
                 negative_units = self.events_df.filter(
                     F.col("units").isNotNull() & (F.col("units") <= 0)
                 ).count()
-                total_count = self.events_df.count()
-                negative_units_percent = (negative_units / total_count) * 100 if total_count > 0 else 0
+                
+                negative_units_percent = (negative_units / self.total_event_count) * 100 if self.total_event_count > 0 else 0
                 
                 self.add_result(
                     check_category="validity",
@@ -178,7 +191,7 @@ class ValidityCheck(BaseCheck):
                 extreme_units = self.events_df.filter(
                     F.col("units").isNotNull() & (F.col("units") > EXTREME_UNITS_THRESHOLD)
                 ).count()
-                extreme_units_percent = (extreme_units / total_count) * 100 if total_count > 0 else 0
+                extreme_units_percent = (extreme_units / self.total_event_count) * 100 if self.total_event_count > 0 else 0
                 
                 self.add_result(
                     check_category="validity",
@@ -195,8 +208,8 @@ class ValidityCheck(BaseCheck):
                     F.col("unit_type").isNotNull() & 
                     ~upper(F.col("unit_type")).isin(EXPECTED_UNIT_TYPES)
                 ).count()
-                total_count = self.events_df.count()
-                invalid_unit_type_percent = (invalid_unit_type / total_count) * 100 if total_count > 0 else 0
+                
+                invalid_unit_type_percent = (invalid_unit_type / self.total_event_count) * 100 if self.total_event_count > 0 else 0
                 
                 self.add_result(
                     check_category="validity",
@@ -217,8 +230,8 @@ class ValidityCheck(BaseCheck):
                     F.col(npi_col).isNotNull() & 
                     ((length(F.col(npi_col)) != 10) | (F.col(npi_col).rlike("[^0-9]")))
                 ).count()
-                total_count = self.events_df.count()
-                invalid_npi_percent = (invalid_npi / total_count) * 100 if total_count > 0 else 0
+                
+                invalid_npi_percent = (invalid_npi / self.total_event_count) * 100 if self.total_event_count > 0 else 0
                 
                 self.add_result(
                     check_category="validity",
@@ -237,8 +250,8 @@ class ValidityCheck(BaseCheck):
                 F.col("date_prescription_written").isNotNull() & 
                 (F.col("fill_date") < F.col("date_prescription_written"))
             ).count()
-            total_count = self.events_df.count()
-            invalid_order_percent = (invalid_order / total_count) * 100 if total_count > 0 else 0
+            
+            invalid_order_percent = (invalid_order / self.total_event_count) * 100 if self.total_event_count > 0 else 0
             
             self.add_result(
                 check_category="validity",
@@ -257,8 +270,8 @@ class ValidityCheck(BaseCheck):
                 F.col("service_to_date").isNotNull() & 
                 (F.col("service_to_date") > current_date())
             ).count()
-            total_count = self.events_df.count()
-            future_service_to_date_percent = (future_service_to_date / total_count) * 100 if total_count > 0 else 0
+            
+            future_service_to_date_percent = (future_service_to_date / self.total_event_count) * 100 if self.total_event_count > 0 else 0
             
             self.add_result(
                 check_category="validity",

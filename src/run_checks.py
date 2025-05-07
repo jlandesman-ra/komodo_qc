@@ -14,6 +14,7 @@ from src.checks.distribution import DistributionCheck
 from src.checks.temporal import TemporalCheck
 from src.checks.validity import ValidityCheck
 from src.checks.volume import VolumeCheck
+from src.checks.uniqueness import UniquenessCheck
 from src.core.spark_utils import get_spark_session, get_table, save_results
 from src.config.settings import (
     DB_NAME,
@@ -36,7 +37,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Run data quality checks')
     parser.add_argument('--checks', nargs='+', 
                       choices=['all', 'completeness', 'consistency', 'distribution', 
-                              'temporal', 'validity', 'volume'],
+                              'temporal', 'validity', 'volume', 'uniqueness'],
                       default=['all'],
                       help='Specify which checks to run (default: all)')
     parser.add_argument('--refresh-month', type=str,
@@ -77,6 +78,7 @@ def run_checks(
     check_classes = {
         'completeness': CompletenessCheck,
         'consistency': ConsistencyCheck,
+        'uniqueness': UniquenessCheck,
         'distribution': DistributionCheck,
         'temporal': TemporalCheck,
         'validity': ValidityCheck,
@@ -101,9 +103,8 @@ def run_checks(
                 check.previous_refresh_month = previous_refresh_month
             results = check.run()
             all_results.extend(results)
-    
-    # Create DataFrame from results
-    if all_results:
+
+        print(f'finished {check_name}')
         results_df = spark.createDataFrame(all_results)
         # Save results
         save_results(spark, results_df)
