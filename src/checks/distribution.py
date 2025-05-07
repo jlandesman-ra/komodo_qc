@@ -41,11 +41,11 @@ class DistributionCheck(BaseCheck):
 
         self.demo_df = (
             get_table(self.spark, DB_NAME, RAW_SCHEMA, DEMO_TABLE)
-            .filter(F.date_format(col("kh_refresh_date"), "yyyy-MM") <= self.refresh_month)
+            .filter(F.date_format(col("kh_refresh_date"), "yyyy-MM") == self.refresh_month)
             .withColumn("rn", expr("row_number() OVER (PARTITION BY patient_id ORDER BY kh_refresh_date DESC)"))
             .filter(col("rn") == 1)
             # Select patient_yob to calculate age
-            .select("patient_id", "patient_gender", "patient_yob", "kh_refresh_date") # Keep kh_refresh_date if needed for age calc relative to record's refresh
+            .select("patient_id", "patient_gender", "patient_yob", "kh_refresh_date")
             .withColumn(
                 "age",
                 when(
@@ -198,7 +198,6 @@ class DistributionCheck(BaseCheck):
                 
                 # Format distribution string
                 state_dist_rows = state_dist.collect()
-                # The column from groupBy("geo.patient_state") will likely be named "patient_state"
                 state_dist_str = ", ".join(
                     [f"{row.patient_state}: {row.percentage:.1f}%" for row in state_dist_rows]
                 ) if state_dist_rows else "N/A"
@@ -224,6 +223,7 @@ class DistributionCheck(BaseCheck):
                     status="INFO",
                     details="No events could be linked to geographic data",
                 )
+
     def _check_provider_distribution(self):
         """Checks provider distribution of events."""
         if "patient_id" in self.events_df.columns:

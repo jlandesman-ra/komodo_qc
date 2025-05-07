@@ -50,19 +50,6 @@ class BaseCheck(ABC):
         )
         self.results.append(result)
     
-    def check_null_percentage(
-        self, column: str, threshold: float = NULL_PERCENT_THRESHOLD
-    ) -> float:
-        """Calculates the percentage of NULL values in a column."""
-        total_count = self.events_df.count()
-        if total_count == 0:
-            return 0.0
-        
-        null_count = self.events_df.filter(F.col(column).isNull()).count()
-        null_percentage = (null_count / total_count) * 100
-        
-        return null_percentage
-    
     @abstractmethod
     def run(self) -> List[Dict]:
         """Runs the check and returns the results."""

@@ -34,4 +34,5 @@ EXPECTED_UNIT_TYPES = ["ML", "UN", "GR", "F2", "ME", "Other"]
 NULL_PERCENT_THRESHOLD = 5.0  # Max acceptable percentage of NULLs
 EXTREME_UNITS_THRESHOLD = 9999  # May need adjustment for RX quantity/days_supply
 RECORD_COUNT_DEV_THRESHOLD = 0.5  # +/- 50% deviation threshold for record counts vs previous month
-PATIENT_COUNT_DEV_THRESHOLD = 0.3  # +/- 30% deviation threshold for patient counts vs previous month 
+PATIENT_COUNT_DEV_THRESHOLD = 0.3  # +/- 30% deviation threshold for patient counts vs previous month
+MORTALITY_DAYS_THRESHOLD = 60 # Number of days after death a procedure can be performed 

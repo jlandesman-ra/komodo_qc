@@ -87,7 +87,7 @@ def run_checks(
     # Initialize check classes
     check_classes = {
         'completeness': CompletenessCheck,
-        'consistency': ConsistencyCheck,
+        'consistency': ConsistencyCheck#,
         'uniqueness': UniquenessCheck,
         'distribution': DistributionCheck,
         'temporal': TemporalCheck,
@@ -107,7 +107,7 @@ def run_checks(
                 events_df=events_df,
                 refresh_month=current_refresh_month,
                 events_table_name=events_table_name,
-                sample_rows=sample_rows # Ensure sample_rows is passed
+                sample_rows=sample_rows 
             )
             
             # Set previous_refresh_month for specific check types that require it

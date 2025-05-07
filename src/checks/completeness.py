@@ -19,6 +19,20 @@ class CompletenessCheck(BaseCheck):
         self._check_logical_completeness()
         return self.results
     
+        
+    def _check_null_percentage(
+        self, column: str, threshold: float = NULL_PERCENT_THRESHOLD
+    ) -> float:
+        """Calculates the percentage of NULL values in a column."""
+        total_count = self.events_df.count()
+        if total_count == 0:
+            return 0.0
+        
+        null_count = self.events_df.filter(F.col(column).isNull()).count()
+        null_percentage = (null_count / total_count) * 100
+        
+        return null_percentage
+
     def _check_required_fields(self):
         """Checks for NULL values in required fields."""
         # Determine table type and required fields
@@ -51,7 +65,7 @@ class CompletenessCheck(BaseCheck):
                 )
                 continue
                 
-            null_percentage = self.check_null_percentage(field)
+            null_percentage = self._check_null_percentage(field)
             status = "FAIL" if null_percentage > 0 else "PASS"
             self.add_result(
                 check_category="completeness",
@@ -101,7 +115,7 @@ class CompletenessCheck(BaseCheck):
             if field not in self.events_df.columns:
                 continue
                 
-            null_percentage = self.check_null_percentage(field)
+            null_percentage = self._check_null_percentage(field)
             status = "WARN" if null_percentage > NULL_PERCENT_THRESHOLD else "PASS"
             self.add_result(
                 check_category="completeness",
