@@ -99,19 +99,23 @@ def run_checks(
     all_results = []
     for check_name in checks_to_run:
         if check_name in check_classes:
-            check_class = check_classes[check_name]
+            check_class_ref = check_classes[check_name]
             # Initialize check with current refresh month
             print(f'running {check_name}, \ncurrent_refresh_month = {current_refresh_month}, \nevents_table_name = {events_table_name}')
-            check = check_class(
+            check_instance = check_class_ref(
                 spark=spark,
                 events_df=events_df,
                 refresh_month=current_refresh_month,
-                events_table_name=events_table_name
+                events_table_name=events_table_name,
+                sample_rows=sample_rows # Ensure sample_rows is passed
             )
-            # Set previous refresh month if needed
-            if hasattr(check, 'previous_refresh_month'):
-                check.previous_refresh_month = previous_refresh_month
-            results = check.run()
+            
+            # Set previous_refresh_month for specific check types that require it
+            if isinstance(check_instance, (VolumeCheck, TemporalCheck)):
+                # The 'previous_refresh_month' variable comes from the function arguments
+                check_instance.previous_refresh_month = previous_refresh_month
+            
+            results = check_instance.run()
             all_results.extend(results)
 
         print(f'finished {check_name}')

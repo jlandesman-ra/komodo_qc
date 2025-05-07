@@ -21,7 +21,7 @@ class ValidityCheck(BaseCheck):
         """Runs all validity checks."""
         # Determine table type
         is_rx = self.events_table_name == "Stg_rx_events"
-        
+        self.total_event_count = self.events_df.count()
         
         # If there are no events, add an informational result and skip other checks
         if self.total_event_count == 0:

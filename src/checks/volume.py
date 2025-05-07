@@ -51,7 +51,6 @@ class VolumeCheck(BaseCheck):
         if self.sample_rows > 0:
             print(f"VolumeCheck: Applying .limit({self.sample_rows}) to internally loaded data for {self.events_table_name}.")
             base_df = base_df_full.limit(self.sample_rows)
-
         else:
             base_df = base_df_full
 
@@ -63,27 +62,6 @@ class VolumeCheck(BaseCheck):
         self.code_col = None
         self.code_metric_name = "Distinct Code Count"
         
-        # Check for provider column
-        if "provider_id" in base_df.columns:
-            self.provider_col = "provider_id"
-            print(f"Found provider_id column in {self.events_table_name}, will include provider metrics.")
-        else:
-            print(f"Warning: 'provider_id' column not found in {self.events_table_name}, skipping provider counts.")
-        
-        # Check for organization column
-        if "organization_id" in base_df.columns:
-            self.org_col = "organization_id"
-            print(f"Found organization_id column in {self.events_table_name}, will include organization metrics.")
-        else:
-            print(f"Warning: 'organization_id' column not found in {self.events_table_name}, skipping organization counts.")
-        
-        # Check for payer column
-        if "payer_id" in base_df.columns:
-            self.payer_col = "payer_id"
-            print(f"Found payer_id column in {self.events_table_name}, will include payer metrics.")
-        else:
-            print(f"Warning: 'payer_id' column not found in {self.events_table_name}, skipping payer counts.")
-        
         # Check for cohort column
         if "cohort_id" in base_df.columns:
             self.cohort_col = "cohort_id"
@@ -91,23 +69,64 @@ class VolumeCheck(BaseCheck):
         else:
             print(f"Warning: 'cohort_id' column not found in {self.events_table_name}, skipping cohort counts.")
         
-        # Check for code column based on table type
+        # Define table-specific columns
         if self.events_table_name == "Stg_rx_events":
+            # Code column for RX events
             if "ndc11" in base_df.columns:
                 self.code_col = "ndc11"
                 self.code_metric_name = "Distinct NDC11 Count"
                 print(f"Found ndc11 column in {self.events_table_name}, will include NDC11 metrics.")
             else:
                 print(f"Warning: 'ndc11' column not found in {self.events_table_name}, skipping NDC11 counts.")
+            
+            # For RX events, use prescriber_npi for HCP
+            if "prescriber_npi" in base_df.columns:
+                self.provider_col = "prescriber_npi"
+                print(f"Found prescriber_npi column in {self.events_table_name}, will include HCP metrics.")
+            else:
+                print(f"Warning: 'prescriber_npi' column not found in {self.events_table_name}, skipping HCP counts.")
+            
+            # For RX events, use pharmacy_npi for HCO
+            if "pharmacy_npi" in base_df.columns:
+                self.org_col = "pharmacy_npi"
+                print(f"Found pharmacy_npi column in {self.events_table_name}, will include HCO metrics.")
+            else:
+                print(f"Warning: 'pharmacy_npi' column not found in {self.events_table_name}, skipping HCO counts.")
+            
+            # For RX events, there's no direct payer column identified
+            print(f"Note: No payer column found in {self.events_table_name}, skipping payer counts.")
+            
         else:  # Default to Stg_mx_events
+            # Code column for MX events
             if "procedure_code" in base_df.columns:
                 self.code_col = "procedure_code"
                 self.code_metric_name = "Distinct Procedure Code Count"
                 print(f"Found procedure_code column in {self.events_table_name}, will include procedure code metrics.")
             else:
                 print(f"Warning: 'procedure_code' column not found in {self.events_table_name}, skipping procedure code counts.")
+            
+            # For MX events, use rendering_npi for HCP
+            if "rendering_npi" in base_df.columns:
+                self.provider_col = "rendering_npi"
+                print(f"Found rendering_npi column in {self.events_table_name}, will include HCP metrics.")
+            else:
+                print(f"Warning: 'rendering_npi' column not found in {self.events_table_name}, skipping HCP counts.")
+            
+            # For MX events, use billing_npi for HCO
+            if "billing_npi" in base_df.columns:
+                self.org_col = "billing_npi"
+                print(f"Found billing_npi column in {self.events_table_name}, will include HCO metrics.")
+            else:
+                print(f"Warning: 'billing_npi' column not found in {self.events_table_name}, skipping HCO counts.")
+            
+            # For MX events, use kh_plan_id for payer
+            if "kh_plan_id" in base_df.columns:
+                self.payer_col = "kh_plan_id"
+                print(f"Found kh_plan_id column in {self.events_table_name}, will include payer metrics.")
+            else:
+                print(f"Warning: 'kh_plan_id' column not found in {self.events_table_name}, skipping payer counts.")
         
-        # Build aggregation columns
+        # Build aggregation columns (this part remains the same)
         agg_cols = [
             count("*").alias("record_count"),
             countDistinct("patient_id").alias("distinct_patient_count")

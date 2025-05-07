@@ -41,7 +41,7 @@ class TemporalCheck(BaseCheck):
     def _load_data(self):
         """Loads data for both current and previous months."""
         # Check if ndc11 column exists
-        base_df_full = get_table(self.spark, DB_NAME, RAW_SCHEMA, self.self.events_table_name)
+        base_df_full = get_table(self.spark, DB_NAME, RAW_SCHEMA, self.events_table_name)
 
         if self.sample_rows > 0:
             print(f"TemporalCheck: Applying .limit({self.sample_rows}) to internally loaded data for {self.events_table_name}.")
