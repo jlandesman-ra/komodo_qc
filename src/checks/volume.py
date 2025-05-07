@@ -46,8 +46,15 @@ class VolumeCheck(BaseCheck):
     def _load_data(self):
         """Loads data for both current and previous months."""
         # Get base table
-        base_df = get_table(self.spark, DB_NAME, RAW_SCHEMA, self.events_table_name)
+        base_df_full = get_table(self.spark, DB_NAME, RAW_SCHEMA, self.events_table_name)
         
+        if self.sample_rows > 0:
+            print(f"VolumeCheck: Applying .limit({self.sample_rows}) to internally loaded data for {self.events_table_name}.")
+            base_df = base_df_full.limit(self.sample_rows)
+
+        else:
+            base_df = base_df_full
+
         # Initialize columns
         self.provider_col = None
         self.org_col = None
@@ -128,7 +135,7 @@ class VolumeCheck(BaseCheck):
         # Load current month data
         self.current_counts = (
             base_df
-            .filter(date_format(col("kh_refresh_date"), "yyyy-MM") == self.current_refresh_month)
+            .filter(date_format(col("kh_refresh_date"), "yyyy-MM") == self.refresh_month)
             .agg(*agg_cols)
             .first()
         )
@@ -145,7 +152,7 @@ class VolumeCheck(BaseCheck):
         if self.cohort_col:
             self.cohort_distribution_current = (
                 base_df
-                .filter(date_format(col("kh_refresh_date"), "yyyy-MM") == self.current_refresh_month)
+                .filter(date_format(col("kh_refresh_date"), "yyyy-MM") == self.refresh_month)
                 .filter(col(self.cohort_col).isNotNull())
                 .groupBy(self.cohort_col)
                 .agg(

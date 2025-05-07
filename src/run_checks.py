@@ -46,6 +46,8 @@ def parse_args():
                       help='Override the previous refresh month from settings')
     parser.add_argument('--events-table', type=str, required=True,
                       help='Name of the events table to check')
+    parser.add_argument('--sample-rows', type=int, default=0,
+                      help='Number of rows to sample from the events table for faster iteration (default: 0, meaning all rows). Uses .limit() for speed.')
     return parser.parse_args()
 
 def run_checks(
@@ -53,7 +55,8 @@ def run_checks(
     events_table_name: str,
     current_refresh_month: str,
     previous_refresh_month: str,
-    checks_to_run: List[str]
+    checks_to_run: List[str],
+    sample_rows: int=0
 ) -> List[Dict]:
     """
     Run all data quality checks.
@@ -69,11 +72,18 @@ def run_checks(
         List of check results
     """
     # Get events table
-    events_df = get_table(spark, DB_NAME, RAW_SCHEMA, events_table_name)
+    events_df_full = get_table(spark, DB_NAME, RAW_SCHEMA, events_table_name)
     print('table loaded')
-    if events_df is None:
+    if events_df_full is None:
         raise ValueError(f"Events table {events_table_name} not found")
     
+    if sample_rows > 0:
+        print(f"Sampling {sample_rows} rows from {events_table_name} using .limit() for faster iteration.")
+        events_df = events_df_full.limit(sample_rows)
+    else:
+        events_df = events_df_full
+
+
     # Initialize check classes
     check_classes = {
         'completeness': CompletenessCheck,
@@ -91,7 +101,7 @@ def run_checks(
         if check_name in check_classes:
             check_class = check_classes[check_name]
             # Initialize check with current refresh month
-            print(f'running {check_name}, \nevents_df = {events_df}, \ncurrent_refresh_month = {current_refresh_month}, \nevents_table_name = {events_table_name}')
+            print(f'running {check_name}, \ncurrent_refresh_month = {current_refresh_month}, \nevents_table_name = {events_table_name}')
             check = check_class(
                 spark=spark,
                 events_df=events_df,
@@ -142,14 +152,15 @@ def main():
         # Initialize Spark session
         spark = get_spark_session()
 
-        print('running checks')
+        print(f'running checks, sample rows = {args.sample_rows}')
         # Run checks
         results = run_checks(
             spark=spark,
             events_table_name=args.events_table,
             current_refresh_month=current_refresh_month,
             previous_refresh_month=previous_refresh_month,
-            checks_to_run=checks_to_run
+            checks_to_run=checks_to_run,
+            sample_rows=args.sample_rows
         )
         
         # Log results

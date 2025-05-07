@@ -20,6 +20,7 @@ class BaseCheck(ABC):
         self.events_df = events_df
         self.refresh_month = refresh_month
         self.events_table_name = events_table_name
+        self.sample_rows = sample_rows
         self.results = []
         # Generate a unique run ID
         self.run_start_datetime = datetime.now() 

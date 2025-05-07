@@ -140,7 +140,7 @@ spark.stop()
 # COMMAND ----------
 
 # Run only completeness for RX events
-%run ../src/run_checks.py --events-table Stg_rx_events --checks consistency distribution temporal uniqueness validity volume
+%run ../src/run_checks.py --events-table Stg_rx_events --sample-rows 10000 --checks consistency distribution temporal uniqueness validity volume 
 
 # COMMAND ----------
 
