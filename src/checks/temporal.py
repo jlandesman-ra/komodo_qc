@@ -128,9 +128,9 @@ class TemporalCheck(BaseCheck):
         # Get new patients
         new_patients = self.current_events.join(
             self.previous_events,
-            self.current_events.patient_id == self.previous_events.patient_id,
+            F.col("curr.patient_id") == F.col("prev.patient_id"),
             "left_anti"
-        ).select("patient_id").distinct()
+        ).select(F.col("curr.patient_id").alias("patient_id")).distinct()
         
         new_patient_count = new_patients.count()
         total_patient_count = self.current_events.select("patient_id").distinct().count()
@@ -156,9 +156,9 @@ class TemporalCheck(BaseCheck):
         # Get returning patients
         returning_patients = self.current_events.join(
             self.previous_events,
-            self.current_events.patient_id == self.previous_events.patient_id,
+            F.col("curr.patient_id") == F.col("prev.patient_id"),
             "inner"
-        ).select("patient_id").distinct()
+        ).select(F.col("curr.patient_id").alias("patient_id")).distinct()
         
         returning_count = returning_patients.count()
         previous_count = self.previous_events.select("patient_id").distinct().count()
@@ -214,13 +214,13 @@ class TemporalCheck(BaseCheck):
             
             # Find significant changes
             significant_changes = ndc_changes.filter(
-                (abs(col("percent_change")) > 50) &  # More than 50% change
+                (F.abs(col("percent_change")) > 50) &  # More than 50% change
                 (col("current_patient_count") >= 10)  # At least 10 current patients
             )
             
             # Format change details
             change_details = []
-            for row in significant_changes.orderBy(abs(col("percent_change")).desc()).limit(5).collect():
+            for row in significant_changes.orderBy(F.abs(col("percent_change")).desc()).limit(5).collect():
                 pct_str = f"{row.percent_change:+.1f}%"
                 change_details.append(
                     f"NDC:{row.ndc11}(Prev:{row.previous_patient_count}, Curr:{row.current_patient_count}, Chg:{row.patient_count_change:+d} [{pct_str}])"

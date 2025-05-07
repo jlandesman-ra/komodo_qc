@@ -38,23 +38,6 @@ class DistributionCheck(BaseCheck):
     
     def _load_supporting_data(self):
         """Loads supporting data tables."""
-        # Get latest demographic records per patient
-        # self.demo_df = (
-        #     get_table(self.spark, DB_NAME, RAW_SCHEMA, DEMO_TABLE)
-        #     .filter(date_format(col("kh_refresh_date"), "yyyy-MM") <= self.refresh_month)
-        #     .withColumn("rn", expr("row_number() OVER (PARTITION BY patient_id ORDER BY kh_refresh_date DESC)"))
-        #     .filter(col("rn") == 1)
-        #     .select("patient_id", "patient_gender", "age_group")
-        #     .alias("dm")
-        # )
-        
-        # # Get geographic data
-        # self.geo_df = (
-        #     get_table(self.spark, DB_NAME, RAW_SCHEMA, GEO_TABLE)
-        #     .filter(date_format(col("kh_refresh_date"), "yyyy-MM") <= self.refresh_month)
-        #     .select("patient_id", "valid_from_date", "valid_to_date", "patient_state")
-        #     .filter(col("valid_from_date").isNotNull() & col("valid_to_date").isNotNull() & col("patient_state").isNotNull())
-        #     .alias("geo")
 
         self.demo_df = (
             get_table(self.spark, DB_NAME, RAW_SCHEMA, DEMO_TABLE)
@@ -99,7 +82,7 @@ class DistributionCheck(BaseCheck):
             events_base_df = self.events_df.select(col("patient_id").alias("event_patient_id_for_join")).distinct()
 
             events_with_demo = events_base_df.join(
-                self.demo_df, # self.demo_df is already aliased as "dm" in its definition
+                self.demo_df, 
                 col("event_patient_id_for_join") == col("dm.patient_id"), # Use aliased name for the join
                 "left"
             )
@@ -184,17 +167,21 @@ class DistributionCheck(BaseCheck):
         if "patient_id" in self.events_df.columns:
             date_column = "fill_date" if "fill_date" in self.events_df.columns else "service_date"
             
+            events_df_for_join = self.events_df.select(
+                self.events_df["patient_id"],
+                self.events_df[date_column]
+            )
             # Join events with geographic data
-            events_with_geo = self.events_df.select("patient_id", date_column).join(
-                self.geo_df,
-                (col("patient_id") == col("geo.patient_id")) &
-                (col(date_column) >= col("geo.valid_from_date")) &
-                (col(date_column) <= col("geo.valid_to_date")),
+            events_with_geo = events_df_for_join.join(
+                self.geo_df, # self.geo_df is aliased as "geo" in _load_supporting_data
+                (events_df_for_join["patient_id"] == col("geo.patient_id")) & 
+                (events_df_for_join[date_column] >= col("geo.valid_from_date")) & # Also qualify date_column for safety
+                (events_df_for_join[date_column] <= col("geo.valid_to_date")),
                 "left"
             )
             
             # Count events by state
-            state_counts = events_with_geo.groupBy("geo.patient_state").agg(
+            state_counts = events_with_geo.groupBy(col("geo.patient_state")).agg( # Using col() as per imports
                 count("*").alias("event_count")
             )
             
@@ -211,6 +198,7 @@ class DistributionCheck(BaseCheck):
                 
                 # Format distribution string
                 state_dist_rows = state_dist.collect()
+                # The column from groupBy("geo.patient_state") will likely be named "patient_state"
                 state_dist_str = ", ".join(
                     [f"{row.patient_state}: {row.percentage:.1f}%" for row in state_dist_rows]
                 ) if state_dist_rows else "N/A"
@@ -236,7 +224,6 @@ class DistributionCheck(BaseCheck):
                     status="INFO",
                     details="No events could be linked to geographic data",
                 )
-    
     def _check_provider_distribution(self):
         """Checks provider distribution of events."""
         if "patient_id" in self.events_df.columns:
