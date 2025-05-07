@@ -15,7 +15,7 @@ from src.config.settings import NULL_PERCENT_THRESHOLD
 class BaseCheck(ABC):
     """Base class for all data quality checks."""
     
-    def __init__(self, spark: SparkSession, events_df: DataFrame, refresh_month: str, events_table_name: str):
+    def __init__(self, spark: SparkSession, events_df: DataFrame, refresh_month: str, events_table_name: str, sample_rows: int=0):
         self.spark = spark
         self.events_df = events_df
         self.refresh_month = refresh_month
