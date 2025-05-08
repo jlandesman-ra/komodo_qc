@@ -12,32 +12,18 @@ This framework provides a comprehensive set of data quality checks for Komodo da
 - Validity checks
 - Volume checks
 
-## Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/komodo_qc_checks.git
-cd komodo_qc_checks
-```
-
-2. Create and activate a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+The initial version is on `notebooks/Komodo Quality Checks Notebook`.
+The scripts here are AI-assisted translation to a script format.
 
 ## Usage
 
-Run data quality checks using the command-line interface:
+Run data quality checks using Databricks CLI:
 
 ```bash
 python src/run_checks.py --events-table <table_name> [options]
 ```
+
+Run the data quality checks as a job in Databricks to run all at once using `batch_runner.py`
 
 ### Options
 
@@ -55,6 +41,9 @@ python src/run_checks.py --events-table <table_name> [options]
 
 - `--events-table`: Name of the events table to check (required)
   - Example: `--events-table Stg_rx_events`
+
+  `--sample-rows`: For faster iteration time, use this parameter to limit the number of rows the code is running on 
+   - Example: `--sample-rows 10000`
 
 ### Examples
 
@@ -91,30 +80,16 @@ komodo_qc_checks/
 │   │   ├── logging_utils.py
 │   │   └── spark_utils.py
 │   └── run_checks.py
-├── tests/
+├── notebooks/
+    |── Komodo Quality Checks Notebook
 ├── .gitignore
 ├── README.md
 └── requirements.txt
 ```
 
-## Development
+## TO DO 
 
-1. Create a new branch for your feature:
-```bash
-git checkout -b feature/your-feature-name
-```
-
-2. Make your changes and commit them:
-```bash
-git add .
-git commit -m "Description of your changes"
-```
-
-3. Push your branch and create a pull request:
-```bash
-git push origin feature/your-feature-name
-```
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details. 
+1. Look through each check to make sure the logic accords with business requirements
+2. Add in Rainbow Chart over time
+3. Add in splits by cohort
+4. Adapt thresholds for pass/fail on the tests to more reasonable levels.

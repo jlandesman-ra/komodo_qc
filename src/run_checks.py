@@ -87,7 +87,7 @@ def run_checks(
     # Initialize check classes
     check_classes = {
         'completeness': CompletenessCheck,
-        'consistency': ConsistencyCheck#,
+        'consistency': ConsistencyCheck,
         'uniqueness': UniquenessCheck,
         'distribution': DistributionCheck,
         'temporal': TemporalCheck,

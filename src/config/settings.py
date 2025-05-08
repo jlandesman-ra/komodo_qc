@@ -21,7 +21,7 @@ MORTALITY_TABLE = "Stg_patient_mortality"
 PROVIDERS_TABLE = "Stg_providers"
 
 # Results Table
-RESULTS_TABLE = f"{DB_NAME}.{DEV_SCHEMA}.rx_mx_events_dq_results"
+RESULTS_TABLE = f"{DB_NAME}.{DEV_SCHEMA}.mx_qc_checks"
 
 # Expected Values
 EXPECTED_PROC_CODE_TYPES = [

@@ -204,7 +204,7 @@ class VolumeCheck(BaseCheck):
         self.add_result(
             check_category="volume",
             check_name="record_count",
-            metric_name="current_count",
+            metric_name="current_count_rows",
             metric_value=current_count,
             status="INFO",
             details=f"Previous month: {previous_count}"
@@ -241,7 +241,7 @@ class VolumeCheck(BaseCheck):
         self.add_result(
             check_category="volume",
             check_name="patient_count",
-            metric_name="current_count",
+            metric_name="current_count_patients",
             metric_value=current_count,
             status="INFO",
             details=f"Previous month: {previous_count}"
@@ -289,7 +289,7 @@ class VolumeCheck(BaseCheck):
         self.add_result(
             check_category="volume",
             check_name="code_count",
-            metric_name="current_count",
+            metric_name="current_count_codes",
             metric_value=current_count,
             status="INFO",
             details=f"Previous month: {previous_count}"
