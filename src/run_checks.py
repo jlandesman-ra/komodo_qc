@@ -184,4 +184,12 @@ def main():
             spark.stop()
 
 if __name__ == "__main__":
+    import sys
+    sys.argv = [
+        'run_checks.py',
+        '--checks', 'volume',
+        '--events-table', 'stg_mx_events',
+        '--sample-rows', '10000'
+    ]
+    
     main() 

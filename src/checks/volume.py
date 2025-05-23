@@ -1,8 +1,4 @@
-"""
-Volume checks for data quality validation.
-"""
-
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from pyspark.sql import DataFrame, SparkSession, Row
 from pyspark.sql import functions as F
 from pyspark.sql.functions import (
@@ -25,544 +21,239 @@ from src.config.settings import (
 )
 
 class VolumeCheck(BaseCheck):
-    """Checks for volume patterns in the events table."""
+    """
+    Calculates volume metrics for the specified refresh_month.
+    Does not perform inter-month comparisons.
+    """
     
-    def run(self) -> List[Dict]:
-        """Runs all volume checks."""
-        # Load data for both current and previous months
-        self._load_data()
+    def __init__(self, spark: SparkSession, events_table_name: str, refresh_month: str, 
+                 previous_refresh_month: Optional[str] = None, # Kept for BaseCheck
+                 sample_rows: int = 0):
+        super().__init__(spark, events_table_name, refresh_month, previous_refresh_month, sample_rows)
+        self.events_df: Optional[DataFrame] = None
+        self.current_counts: Optional[Row] = None
+        self.cohort_distribution_current: Optional[List[Row]] = None
+        self.provider_col: Optional[str] = None
+        self.org_col: Optional[str] = None
+        self.payer_col: Optional[str] = None
+        self.cohort_col: Optional[str] = None
+        self.code_col: Optional[str] = None
+        self.code_metric_name: str = "Distinct Code Count"
+
+    def run(self) -> List[Dict[str, Any]]:
+        print(f"Starting Volume checks for table '{self.events_table_name}' for month {self.refresh_month}")
+        try:
+            self._load_and_aggregate_current_data()
+            
+            if self.events_df is None or self.current_counts is None:
+                print(f"Error: Data not loaded or aggregated for {self.events_table_name} and month {self.refresh_month}. Skipping checks.")
+                # self.add_result might have already been called in _load_and_aggregate_current_data if base_df was None
+                if self.events_df is not None and self.current_counts is None: # Specific case where aggregation might have failed
+                     self.add_result(
+                        check_category="Volume", check_name="Setup", metric_name="Data Aggregation",
+                        metric_value="ERROR", status="FAIL", details=f"Could not aggregate data for {self.refresh_month}."
+                    )
+                return self.results
+
+            self._check_record_counts()
+            self._check_patient_counts()
+            self._check_code_counts()
+            self._check_provider_metrics()
+            self._check_organization_metrics()
+            self._check_payer_metrics()
+            self._check_cohort_metrics()
         
-        # Run checks
-        self._check_record_counts()
-        self._check_patient_counts()
-        self._check_code_counts()
-        self._check_provider_metrics()
-        self._check_organization_metrics()
-        self._check_payer_metrics()
-        self._check_cohort_metrics()
+        except Exception as e:
+            print(f"Critical error during VolumeCheck run for {self.events_table_name} (month: {self.refresh_month}): {e}")
+            self.add_result(
+                check_category="Volume", check_name="Overall Execution", metric_name="Run Status",
+                metric_value="ERROR", status="FAIL", details=f"Unhandled exception: {str(e)[:200]}"
+            )
         
+        print(f"Finished volume checks for {self.events_table_name}, month {self.refresh_month}.")
         return self.results
     
-    def _load_data(self):
-        """Loads data for both current and previous months."""
-        # Get base table
+    def _load_and_aggregate_current_data(self):
+        """Loads data and prepares aggregations for the current refresh_month."""
+        print(f"Loading base data for {self.events_table_name}...")
         base_df_full = get_table(self.spark, DB_NAME, RAW_SCHEMA, self.events_table_name)
         
         if self.sample_rows > 0:
-            print(f"VolumeCheck: Applying .limit({self.sample_rows}) to internally loaded data for {self.events_table_name}.")
-            base_df = base_df_full.limit(self.sample_rows)
+            print(f"VolumeCheck: Applying .limit({self.sample_rows}) for {self.events_table_name}.")
+            self.events_df = base_df_full.limit(self.sample_rows)
         else:
-            base_df = base_df_full
+            self.events_df = base_df_full
 
-        # Initialize columns
-        self.provider_col = None
-        self.org_col = None
-        self.payer_col = None
-        self.cohort_col = None
-        self.code_col = None
-        self.code_metric_name = "Distinct Code Count"
-        
-        # Check for cohort column
-        if "cohort_id" in base_df.columns:
-            self.cohort_col = "cohort_id"
-            print(f"Found cohort_id column in {self.events_table_name}, will include cohort metrics.")
-        else:
-            print(f"Warning: 'cohort_id' column not found in {self.events_table_name}, skipping cohort counts.")
-        
-        # Define table-specific columns
+        if not self.events_df or self.events_df.isEmpty():
+            details = f"No data loaded for {self.events_table_name}."
+            print(f"Warning: {details}")
+            self.add_result("Volume", "Data Loading", "Source Data", "EMPTY", "WARN", details)
+            self.events_df = None # Ensure it's None to skip further processing
+            return
+
+        # Determine Table-Specific Columns
+        if "cohort_id" in self.events_df.columns: self.cohort_col = "cohort_id"
         if self.events_table_name == "Stg_rx_events":
-            # Code column for RX events
-            if "ndc11" in base_df.columns:
-                self.code_col = "ndc11"
-                self.code_metric_name = "Distinct NDC11 Count"
-                print(f"Found ndc11 column in {self.events_table_name}, will include NDC11 metrics.")
-            else:
-                print(f"Warning: 'ndc11' column not found in {self.events_table_name}, skipping NDC11 counts.")
-            
-            # For RX events, use prescriber_npi for HCP
-            if "prescriber_npi" in base_df.columns:
-                self.provider_col = "prescriber_npi"
-                print(f"Found prescriber_npi column in {self.events_table_name}, will include HCP metrics.")
-            else:
-                print(f"Warning: 'prescriber_npi' column not found in {self.events_table_name}, skipping HCP counts.")
-            
-            # For RX events, use pharmacy_npi for HCO
-            if "pharmacy_npi" in base_df.columns:
-                self.org_col = "pharmacy_npi"
-                print(f"Found pharmacy_npi column in {self.events_table_name}, will include HCO metrics.")
-            else:
-                print(f"Warning: 'pharmacy_npi' column not found in {self.events_table_name}, skipping HCO counts.")
-            
-            # For RX events, there's no direct payer column identified
-            print(f"Note: No payer column found in {self.events_table_name}, skipping payer counts.")
-            
-        else:  # Default to Stg_mx_events
-            # Code column for MX events
-            if "procedure_code" in base_df.columns:
-                self.code_col = "procedure_code"
-                self.code_metric_name = "Distinct Procedure Code Count"
-                print(f"Found procedure_code column in {self.events_table_name}, will include procedure code metrics.")
-            else:
-                print(f"Warning: 'procedure_code' column not found in {self.events_table_name}, skipping procedure code counts.")
-            
-            # For MX events, use rendering_npi for HCP
-            if "rendering_npi" in base_df.columns:
-                self.provider_col = "rendering_npi"
-                print(f"Found rendering_npi column in {self.events_table_name}, will include HCP metrics.")
-            else:
-                print(f"Warning: 'rendering_npi' column not found in {self.events_table_name}, skipping HCP counts.")
-            
-            # For MX events, use billing_npi for HCO
-            if "billing_npi" in base_df.columns:
-                self.org_col = "billing_npi"
-                print(f"Found billing_npi column in {self.events_table_name}, will include HCO metrics.")
-            else:
-                print(f"Warning: 'billing_npi' column not found in {self.events_table_name}, skipping HCO counts.")
-            
-            # For MX events, use kh_plan_id for payer
-            if "kh_plan_id" in base_df.columns:
-                self.payer_col = "kh_plan_id"
-                print(f"Found kh_plan_id column in {self.events_table_name}, will include payer metrics.")
-            else:
-                print(f"Warning: 'kh_plan_id' column not found in {self.events_table_name}, skipping payer counts.")
-        
-        # Build aggregation columns (this part remains the same)
-        agg_cols = [
-            count("*").alias("record_count"),
-            countDistinct("patient_id").alias("distinct_patient_count")
-        ]
-        
-        if self.code_col:
-            agg_cols.append(countDistinct(self.code_col).alias("distinct_code_count"))
-        
-        if self.provider_col:
+            if "ndc11" in self.events_df.columns: self.code_col = "ndc11"; self.code_metric_name = "Distinct NDC11 Count"
+            if "prescriber_npi" in self.events_df.columns: self.provider_col = "prescriber_npi"
+            if "pharmacy_npi" in self.events_df.columns: self.org_col = "pharmacy_npi"
+        else: # Stg_mx_events or other
+            if "procedure_code" in self.events_df.columns: self.code_col = "procedure_code"; self.code_metric_name = "Distinct Procedure Code Count"
+            if "rendering_npi" in self.events_df.columns: self.provider_col = "rendering_npi"
+            if "billing_npi" in self.events_df.columns: self.org_col = "billing_npi"
+            if "kh_plan_id" in self.events_df.columns: self.payer_col = "kh_plan_id"
+
+        missing_initial_cols = [c for c in ["kh_refresh_date", "patient_id"] if c not in self.events_df.columns]
+        if missing_initial_cols:
+            details = f"Missing essential columns ({', '.join(missing_initial_cols)}) in {self.events_table_name}."
+            self.add_result("Volume", "Data Loading", "Schema Check", "ERROR", "FAIL", details)
+            self.events_df = None; return
+
+        agg_cols = [count("*").alias("record_count"), countDistinct("patient_id").alias("distinct_patient_count")]
+        if self.code_col and self.code_col in self.events_df.columns: agg_cols.append(countDistinct(self.code_col).alias("distinct_code_count"))
+        if self.provider_col and self.provider_col in self.events_df.columns:
             agg_cols.append(countDistinct(self.provider_col).alias("distinct_provider_count"))
             agg_cols.append(expr(f"count(distinct case when {self.provider_col} is not null then patient_id end)").alias("patients_with_provider"))
-        
-        if self.org_col:
+        if self.org_col and self.org_col in self.events_df.columns:
             agg_cols.append(countDistinct(self.org_col).alias("distinct_org_count"))
             agg_cols.append(expr(f"count(distinct case when {self.org_col} is not null then patient_id end)").alias("patients_with_org"))
-        
-        if self.payer_col:
+        if self.payer_col and self.payer_col in self.events_df.columns:
             agg_cols.append(countDistinct(self.payer_col).alias("distinct_payer_count"))
             agg_cols.append(expr(f"count(distinct case when {self.payer_col} is not null then patient_id end)").alias("patients_with_payer"))
-        
-        if self.cohort_col:
+        if self.cohort_col and self.cohort_col in self.events_df.columns:
             agg_cols.append(countDistinct(self.cohort_col).alias("distinct_cohort_count"))
             agg_cols.append(expr(f"count(distinct case when {self.cohort_col} is not null then patient_id end)").alias("patients_with_cohort"))
-        
-        # Load current month data
+
+        print(f"Aggregating counts for current month: {self.refresh_month} in {self.events_table_name}")
         self.current_counts = (
-            base_df
+            self.events_df
             .filter(date_format(col("kh_refresh_date"), "yyyy-MM") == self.refresh_month)
             .agg(*agg_cols)
             .first()
         )
-        
-        # Load previous month data
-        self.previous_counts = (
-            base_df
-            .filter(date_format(col("kh_refresh_date"), "yyyy-MM") == self.previous_refresh_month)
-            .agg(*agg_cols)
-            .first()
-        )
-        
-        # Load cohort distribution if available
-        if self.cohort_col:
+        if not self.current_counts or all(value is None for value in self.current_counts.asDict().values()): # Check if row is empty or all None
+            print(f"Warning: No data found for month {self.refresh_month} after filtering {self.events_table_name}. Aggregations might be zero or None.")
+            # self.current_counts might be a Row of None values if no data matched the filter.
+            # The _get_count_from_row helper will handle None values from the Row.
+
+        if self.cohort_col and self.cohort_col in self.events_df.columns:
+            print(f"Calculating current cohort distribution for {self.events_table_name}...")
             self.cohort_distribution_current = (
-                base_df
+                self.events_df
                 .filter(date_format(col("kh_refresh_date"), "yyyy-MM") == self.refresh_month)
                 .filter(col(self.cohort_col).isNotNull())
                 .groupBy(self.cohort_col)
-                .agg(
-                    count("*").alias("record_count"),
-                    countDistinct("patient_id").alias("patient_count")
-                )
-                .orderBy(desc("patient_count"))
-                .collect()
-            )
-            
-            self.cohort_distribution_previous = (
-                base_df
-                .filter(date_format(col("kh_refresh_date"), "yyyy-MM") == self.previous_refresh_month)
-                .filter(col(self.cohort_col).isNotNull())
-                .groupBy(self.cohort_col)
-                .agg(
-                    count("*").alias("record_count"),
-                    countDistinct("patient_id").alias("patient_count")
-                )
+                .agg(count("*").alias("record_count"), countDistinct("patient_id").alias("patient_count"))
                 .orderBy(desc("patient_count"))
                 .collect()
             )
     
+    def _get_count_from_row(self, row: Optional[Row], metric_alias: str, default_value: Any = 0) -> Any:
+        if row and metric_alias in row.asDict():
+            val = row[metric_alias]
+            return val if val is not None else default_value
+        return default_value
+
     def _check_record_counts(self):
-        """Checks record count changes between months."""
-        current_count = self.current_counts["record_count"] if self.current_counts else 0
-        previous_count = self.previous_counts["record_count"] if self.previous_counts else 0
-        
-        # Add current count
-        self.add_result(
-            check_category="volume",
-            check_name="record_count",
-            metric_name="current_count_rows",
-            metric_value=current_count,
-            status="INFO",
-            details=f"Previous month: {previous_count}"
-        )
-        
-        # Add change percentage if previous count exists
-        if previous_count > 0:
-            change_pct = ((current_count - previous_count) / previous_count) * 100
-            status = "PASS" if abs(change_pct / 100) <= RECORD_COUNT_DEV_THRESHOLD else "WARN"
-            self.add_result(
-                check_category="volume",
-                check_name="record_count",
-                metric_name="change_percentage",
-                metric_value=change_pct,
-                status=status,
-                details=f"Change: {change_pct:+.2f}%. Threshold: +/-{RECORD_COUNT_DEV_THRESHOLD:.0%}"
-            )
-        else:
-            self.add_result(
-                check_category="volume",
-                check_name="record_count",
-                metric_name="change_percentage",
-                metric_value="N/A",
-                status="INFO",
-                details="Previous month had 0 records."
-            )
+        current_count = self._get_count_from_row(self.current_counts, "record_count")
+        self.add_result("Volume", "Record Count", "Current Month Value", current_count, "INFO", f"Total records for {self.refresh_month}.")
     
     def _check_patient_counts(self):
-        """Checks patient count changes between months."""
-        current_count = self.current_counts["distinct_patient_count"] if self.current_counts else 0
-        previous_count = self.previous_counts["distinct_patient_count"] if self.previous_counts else 0
-        
-        # Add current count
-        self.add_result(
-            check_category="volume",
-            check_name="patient_count",
-            metric_name="current_count_patients",
-            metric_value=current_count,
-            status="INFO",
-            details=f"Previous month: {previous_count}"
-        )
-        
-        # Add change percentage if previous count exists
-        if previous_count > 0:
-            change_pct = ((current_count - previous_count) / previous_count) * 100
-            status = "PASS" if abs(change_pct / 100) <= PATIENT_COUNT_DEV_THRESHOLD else "WARN"
-            self.add_result(
-                check_category="volume",
-                check_name="patient_count",
-                metric_name="change_percentage",
-                metric_value=change_pct,
-                status=status,
-                details=f"Change: {change_pct:+.2f}%. Threshold: +/-{PATIENT_COUNT_DEV_THRESHOLD:.0%}"
-            )
-        else:
-            self.add_result(
-                check_category="volume",
-                check_name="patient_count",
-                metric_name="change_percentage",
-                metric_value="N/A",
-                status="INFO",
-                details="Previous month had 0 patients."
-            )
-    
+        current_count = self._get_count_from_row(self.current_counts, "distinct_patient_count")
+        self.add_result("Volume", "Distinct Patient Count", "Current Month Value", current_count, "INFO", f"Distinct patients for {self.refresh_month}.")
+
     def _check_code_counts(self):
-        """Checks code count changes between months."""
-        if not self.code_col:
-            self.add_result(
-                check_category="volume",
-                check_name="code_count",
-                metric_name="status",
-                metric_value="SKIPPED",
-                status="WARN",
-                details=f"Relevant code column ({self.code_col}) not found in {self.events_table_name}."
-            )
+        if not self.code_col or not (self.current_counts and "distinct_code_count" in self.current_counts.asDict()):
+            self.add_result("Volume", "Distinct Code Count", "Check Status", "SKIPPED", "INFO",
+                            f"Code column ({self.code_col or 'N/A'}) not found or not aggregated for {self.refresh_month}.")
             return
-        
-        current_count = self.current_counts["distinct_code_count"] if self.current_counts else 0
-        previous_count = self.previous_counts["distinct_code_count"] if self.previous_counts else 0
-        
-        # Add current count
-        self.add_result(
-            check_category="volume",
-            check_name="code_count",
-            metric_name="current_count_codes",
-            metric_value=current_count,
-            status="INFO",
-            details=f"Previous month: {previous_count}"
-        )
-        
-        # Add change percentage if previous count exists
-        if previous_count > 0:
-            change_pct = ((current_count - previous_count) / previous_count) * 100
-            status = "PASS" if abs(change_pct / 100) <= PATIENT_COUNT_DEV_THRESHOLD else "WARN"
-            self.add_result(
-                check_category="volume",
-                check_name="code_count",
-                metric_name="change_percentage",
-                metric_value=change_pct,
-                status=status,
-                details=f"Change: {change_pct:+.2f}%. Threshold: +/-{PATIENT_COUNT_DEV_THRESHOLD:.0%}"
-            )
-        else:
-            self.add_result(
-                check_category="volume",
-                check_name="code_count",
-                metric_name="change_percentage",
-                metric_value="N/A",
-                status="INFO",
-                details=f"Previous month had 0 distinct {self.code_col}s."
-            )
-    
+        current_count = self._get_count_from_row(self.current_counts, "distinct_code_count")
+        self.add_result("Volume", self.code_metric_name, "Current Month Value", current_count, "INFO", f"Distinct codes for {self.refresh_month}.")
+
     def _check_provider_metrics(self):
-        """Checks provider-related metrics."""
-        if not self.provider_col:
+        if not self.provider_col or not self.events_df or not (self.current_counts and "distinct_provider_count" in self.current_counts.asDict()):
+            self.add_result("Volume", "HCP Metrics", "Check Status", "SKIPPED", "INFO",
+                            f"HCP column ({self.provider_col or 'N/A'}) not found, base_df not loaded, or metric not aggregated for {self.refresh_month}.")
             return
-        
-        current_provider_count = self.current_counts["distinct_provider_count"] if self.current_counts else 0
-        current_patients_with_provider = self.current_counts["patients_with_provider"] if self.current_counts else 0
-        previous_provider_count = self.previous_counts["distinct_provider_count"] if self.previous_counts else 0
-        previous_patients_with_provider = self.previous_counts["patients_with_provider"] if self.previous_counts else 0
-        
-        # Add provider counts
-        self.add_result(
-            check_category="volume",
-            check_name="provider_metrics",
-            metric_name="current_provider_count",
-            metric_value=current_provider_count,
-            status="INFO",
-            details=f"Previous month: {previous_provider_count}"
+
+        current_provider_count = self._get_count_from_row(self.current_counts, "distinct_provider_count")
+        self.add_result("Volume", "Distinct HCP Count", "Current Month Value", current_provider_count, "INFO", f"Distinct HCPs for {self.refresh_month}.")
+
+        current_provider_patient_df = (
+            self.events_df
+            .filter(date_format(col("kh_refresh_date"), "yyyy-MM") == self.refresh_month)
+            .filter(col(self.provider_col).isNotNull())
+            .groupBy(self.provider_col)
+            .agg(countDistinct("patient_id").alias("patient_count"))
         )
         
-        # Add patients with provider counts
-        self.add_result(
-            check_category="volume",
-            check_name="provider_metrics",
-            metric_name="current_patients_with_provider",
-            metric_value=current_patients_with_provider,
-            status="INFO",
-            details=f"Previous month: {previous_patients_with_provider}"
-        )
-        
-        # Add provider count change if previous count exists
-        if previous_provider_count > 0:
-            change_pct = ((current_provider_count - previous_provider_count) / previous_provider_count) * 100
-            status = "PASS" if abs(change_pct / 100) <= PATIENT_COUNT_DEV_THRESHOLD else "WARN"
-            self.add_result(
-                check_category="volume",
-                check_name="provider_metrics",
-                metric_name="provider_count_change_percentage",
-                metric_value=change_pct,
-                status=status,
-                details=f"Change: {change_pct:+.2f}%. Threshold: +/-{PATIENT_COUNT_DEV_THRESHOLD:.0%}"
-            )
-        else:
-            self.add_result(
-                check_category="volume",
-                check_name="provider_metrics",
-                metric_name="provider_count_change_percentage",
-                metric_value="N/A",
-                status="INFO",
-                details="Previous month had 0 providers."
-            )
-    
+        current_avg_agg = current_provider_patient_df.agg(avg("patient_count").alias("avg_patients_per_provider")).first()
+        current_avg_patients_per_provider = self._get_count_from_row(current_avg_agg, "avg_patients_per_provider", 0.0)
+        self.add_result("Volume", "Average Patients per HCP", "Current Month Value", round(current_avg_patients_per_provider, 2), "INFO", f"Avg patients per HCP for {self.refresh_month}.")
+
+        top_hcps = current_provider_patient_df.orderBy(desc("patient_count")).limit(TOP_N_DISTRIBUTION).collect()
+        if not top_hcps:
+             print(f"No HCPs found for patient distribution in current month {self.refresh_month} for {self.events_table_name}.")
+        for row_hcp in top_hcps:
+            provider_id_val = row_hcp[self.provider_col]
+            patient_count_val = row_hcp["patient_count"]
+            self.add_result("Volume", "HCP Patient Distribution", f"Provider: {provider_id_val}", patient_count_val, "INFO", f"Patient count for {self.refresh_month}.")
+
     def _check_organization_metrics(self):
-        """Checks organization-related metrics."""
-        if not self.org_col:
+        if not self.org_col or not self.events_df or not (self.current_counts and "distinct_org_count" in self.current_counts.asDict()):
+            self.add_result("Volume", "HCO Metrics", "Check Status", "SKIPPED", "INFO",
+                            f"HCO column ({self.org_col or 'N/A'}) not found, base_df not loaded, or metric not aggregated for {self.refresh_month}.")
             return
-        
-        current_org_count = self.current_counts["distinct_org_count"] if self.current_counts else 0
-        current_patients_with_org = self.current_counts["patients_with_org"] if self.current_counts else 0
-        previous_org_count = self.previous_counts["distinct_org_count"] if self.previous_counts else 0
-        previous_patients_with_org = self.previous_counts["patients_with_org"] if self.previous_counts else 0
-        
-        # Add organization counts
-        self.add_result(
-            check_category="volume",
-            check_name="organization_metrics",
-            metric_name="current_org_count",
-            metric_value=current_org_count,
-            status="INFO",
-            details=f"Previous month: {previous_org_count}"
+
+        current_org_count = self._get_count_from_row(self.current_counts, "distinct_org_count")
+        self.add_result("Volume", "Distinct HCO Count", "Current Month Value", current_org_count, "INFO", f"Distinct HCOs for {self.refresh_month}.")
+
+        current_org_patient_df = (
+            self.events_df
+            .filter(date_format(col("kh_refresh_date"), "yyyy-MM") == self.refresh_month)
+            .filter(col(self.org_col).isNotNull())
+            .groupBy(self.org_col)
+            .agg(countDistinct("patient_id").alias("patient_count"))
         )
-        
-        # Add patients with organization counts
-        self.add_result(
-            check_category="volume",
-            check_name="organization_metrics",
-            metric_name="current_patients_with_org",
-            metric_value=current_patients_with_org,
-            status="INFO",
-            details=f"Previous month: {previous_patients_with_org}"
-        )
-        
-        # Add organization count change if previous count exists
-        if previous_org_count > 0:
-            change_pct = ((current_org_count - previous_org_count) / previous_org_count) * 100
-            status = "PASS" if abs(change_pct / 100) <= PATIENT_COUNT_DEV_THRESHOLD else "WARN"
-            self.add_result(
-                check_category="volume",
-                check_name="organization_metrics",
-                metric_name="org_count_change_percentage",
-                metric_value=change_pct,
-                status=status,
-                details=f"Change: {change_pct:+.2f}%. Threshold: +/-{PATIENT_COUNT_DEV_THRESHOLD:.0%}"
-            )
-        else:
-            self.add_result(
-                check_category="volume",
-                check_name="organization_metrics",
-                metric_name="org_count_change_percentage",
-                metric_value="N/A",
-                status="INFO",
-                details="Previous month had 0 organizations."
-            )
-    
+        current_avg_agg = current_org_patient_df.agg(avg("patient_count").alias("avg_patients_per_org")).first()
+        current_avg_patients_per_org = self._get_count_from_row(current_avg_agg, "avg_patients_per_org", 0.0)
+        self.add_result("Volume", "Average Patients per HCO", "Current Month Value", round(current_avg_patients_per_org, 2), "INFO", f"Avg patients per HCO for {self.refresh_month}.")
+
+        top_hcos = current_org_patient_df.orderBy(desc("patient_count")).limit(TOP_N_DISTRIBUTION).collect()
+        if not top_hcos:
+            print(f"No HCOs found for patient distribution in current month {self.refresh_month} for {self.events_table_name}.")
+        for row_hco in top_hcos:
+            org_id_val = row_hco[self.org_col]
+            patient_count_val = row_hco["patient_count"]
+            self.add_result("Volume", "HCO Patient Distribution", f"Organization: {org_id_val}", patient_count_val, "INFO", f"Patient count for {self.refresh_month}.")
+
     def _check_payer_metrics(self):
-        """Checks payer-related metrics."""
-        if not self.payer_col:
+        if not self.payer_col or not (self.current_counts and "distinct_payer_count" in self.current_counts.asDict()):
+            self.add_result("Volume", "Payer Metrics", "Check Status", "SKIPPED", "INFO",
+                            f"Payer column ({self.payer_col or 'N/A'}) not found or metric not aggregated for {self.refresh_month}.")
             return
-        
-        current_payer_count = self.current_counts["distinct_payer_count"] if self.current_counts else 0
-        current_patients_with_payer = self.current_counts["patients_with_payer"] if self.current_counts else 0
-        previous_payer_count = self.previous_counts["distinct_payer_count"] if self.previous_counts else 0
-        previous_patients_with_payer = self.previous_counts["patients_with_payer"] if self.previous_counts else 0
-        
-        # Add payer counts
-        self.add_result(
-            check_category="volume",
-            check_name="payer_metrics",
-            metric_name="current_payer_count",
-            metric_value=current_payer_count,
-            status="INFO",
-            details=f"Previous month: {previous_payer_count}"
-        )
-        
-        # Add patients with payer counts
-        self.add_result(
-            check_category="volume",
-            check_name="payer_metrics",
-            metric_name="current_patients_with_payer",
-            metric_value=current_patients_with_payer,
-            status="INFO",
-            details=f"Previous month: {previous_patients_with_payer}"
-        )
-        
-        # Add payer count change if previous count exists
-        if previous_payer_count > 0:
-            change_pct = ((current_payer_count - previous_payer_count) / previous_payer_count) * 100
-            status = "PASS" if abs(change_pct / 100) <= PATIENT_COUNT_DEV_THRESHOLD else "WARN"
-            self.add_result(
-                check_category="volume",
-                check_name="payer_metrics",
-                metric_name="payer_count_change_percentage",
-                metric_value=change_pct,
-                status=status,
-                details=f"Change: {change_pct:+.2f}%. Threshold: +/-{PATIENT_COUNT_DEV_THRESHOLD:.0%}"
-            )
-        else:
-            self.add_result(
-                check_category="volume",
-                check_name="payer_metrics",
-                metric_name="payer_count_change_percentage",
-                metric_value="N/A",
-                status="INFO",
-                details="Previous month had 0 payers."
-            )
-    
+        current_payer_count = self._get_count_from_row(self.current_counts, "distinct_payer_count")
+        current_patients_with_payer = self._get_count_from_row(self.current_counts, "patients_with_payer")
+        self.add_result("Volume", "Distinct Payer Count", "Current Month Value", current_payer_count, "INFO", f"Distinct payers for {self.refresh_month}.")
+        self.add_result("Volume", "Patients with Payer", "Current Month Value", current_patients_with_payer, "INFO", f"Patients with payer for {self.refresh_month}.")
+
     def _check_cohort_metrics(self):
-        """Checks cohort-related metrics."""
-        if not self.cohort_col:
+        if not self.cohort_col or not (self.current_counts and "distinct_cohort_count" in self.current_counts.asDict()):
+            self.add_result("Volume", "Cohort Metrics", "Check Status", "SKIPPED", "INFO",
+                            f"Cohort column ({self.cohort_col or 'N/A'}) not found or metric not aggregated for {self.refresh_month}.")
             return
-        
-        current_cohort_count = self.current_counts["distinct_cohort_count"] if self.current_counts else 0
-        current_patients_with_cohort = self.current_counts["patients_with_cohort"] if self.current_counts else 0
-        previous_cohort_count = self.previous_counts["distinct_cohort_count"] if self.previous_counts else 0
-        previous_patients_with_cohort = self.previous_counts["patients_with_cohort"] if self.previous_counts else 0
-        
-        # Add cohort counts
-        self.add_result(
-            check_category="volume",
-            check_name="cohort_metrics",
-            metric_name="current_cohort_count",
-            metric_value=current_cohort_count,
-            status="INFO",
-            details=f"Previous month: {previous_cohort_count}"
-        )
-        
-        # Add patients with cohort counts
-        self.add_result(
-            check_category="volume",
-            check_name="cohort_metrics",
-            metric_name="current_patients_with_cohort",
-            metric_value=current_patients_with_cohort,
-            status="INFO",
-            details=f"Previous month: {previous_patients_with_cohort}"
-        )
-        
-        # Add cohort count change if previous count exists
-        if previous_cohort_count > 0:
-            change_pct = ((current_cohort_count - previous_cohort_count) / previous_cohort_count) * 100
-            status = "PASS" if abs(change_pct / 100) <= PATIENT_COUNT_DEV_THRESHOLD else "WARN"
-            self.add_result(
-                check_category="volume",
-                check_name="cohort_metrics",
-                metric_name="cohort_count_change_percentage",
-                metric_value=change_pct,
-                status=status,
-                details=f"Change: {change_pct:+.2f}%. Threshold: +/-{PATIENT_COUNT_DEV_THRESHOLD:.0%}"
-            )
-        else:
-            self.add_result(
-                check_category="volume",
-                check_name="cohort_metrics",
-                metric_name="cohort_count_change_percentage",
-                metric_value="N/A",
-                status="INFO",
-                details="Previous month had 0 cohorts."
-            )
-        
-        # Check for significant cohort distribution changes
-        if self.cohort_distribution_previous and len(self.cohort_distribution_previous) > 0:
-            # Create dictionaries for easier comparison
-            current_cohort_dict = {row[self.cohort_col]: row["patient_count"] for row in self.cohort_distribution_current}
-            previous_cohort_dict = {row[self.cohort_col]: row["patient_count"] for row in self.cohort_distribution_previous}
-            
-            # Find cohorts with significant changes
-            significant_changes = []
-            for cohort_id, current_count in current_cohort_dict.items():
-                if cohort_id in previous_cohort_dict and previous_cohort_dict[cohort_id] > 0:
-                    prev_count = previous_cohort_dict[cohort_id]
-                    change_pct = ((current_count - prev_count) / prev_count) * 100
-                    if abs(change_pct) >= 20:  # 20% threshold for significant change
-                        significant_changes.append(f"{cohort_id}: {change_pct:+.1f}%")
-            
-            # Find new cohorts (in current but not in previous)
-            new_cohorts = [cohort_id for cohort_id in current_cohort_dict.keys()
-                          if cohort_id not in previous_cohort_dict]
-            
-            # Find missing cohorts (in previous but not in current)
-            missing_cohorts = [cohort_id for cohort_id in previous_cohort_dict.keys()
-                             if cohort_id not in current_cohort_dict]
-            
-            # Add cohort distribution changes
-            if significant_changes or new_cohorts or missing_cohorts:
-                details = []
-                if significant_changes:
-                    details.append(f"Significant changes: {', '.join(significant_changes)}")
-                if new_cohorts:
-                    details.append(f"New cohorts: {', '.join(map(str, new_cohorts))}")
-                if missing_cohorts:
-                    details.append(f"Missing cohorts: {', '.join(map(str, missing_cohorts))}")
-                
-                self.add_result(
-                    check_category="volume",
-                    check_name="cohort_metrics",
-                    metric_name="cohort_distribution_changes",
-                    metric_value=len(significant_changes) + len(new_cohorts) + len(missing_cohorts),
-                    status="WARN",
-                    details="; ".join(details)
-                ) 
+        current_cohort_count = self._get_count_from_row(self.current_counts, "distinct_cohort_count")
+        current_patients_with_cohort = self._get_count_from_row(self.current_counts, "patients_with_cohort")
+        self.add_result("Volume", "Distinct Cohort Count", "Current Month Value", current_cohort_count, "INFO", f"Distinct cohorts for {self.refresh_month}.")
+        self.add_result("Volume", "Patients with Cohort", "Current Month Value", current_patients_with_cohort, "INFO", f"Patients with cohort for {self.refresh_month}.")
+
+        if self.cohort_distribution_current and self.cohort_col:
+            top_n = min(5, len(self.cohort_distribution_current))
+            summary = [f"{row[self.cohort_col]}: {row['patient_count']} patients" for row in self.cohort_distribution_current[:top_n]]
+            self.add_result("Volume", "Cohort Patient Distribution", f"Top {top_n} Cohorts", ", ".join(summary)[:200], "INFO", f"Patient counts per cohort for {self.refresh_month}.")
+            # Individual cohort patient counts can also be added if needed, similar to HCP/HCO
+            for row_cohort in self.cohort_distribution_current[:TOP_N_DISTRIBUTION]: # Or a different TOP_N for cohorts
+                cohort_id_val = row_cohort[self.cohort_col]
+                patient_count_val = row_cohort["patient_count"]
+                self.add_result("Volume", "Individual Cohort Patient Count", f"Cohort: {cohort_id_val}", patient_count_val, "INFO", f"Patient count for {self.refresh_month}.")
+
